@@ -38,7 +38,7 @@ async def weryfikacja(ctx):
 @commands.has_permissions(administrator=True)
 async def ticket(ctx):
     """Wysyła wiadomość ticket z reakcją 🎟️."""
-    embed = discord.Embed(title="🎟️ Pomoc techniczna",
+    embed = discord.Embed(title="🎟️ Napisz co chcesz kupic",
                           description="Kliknij 🎟️ aby otworzyć prywatny ticket.",
                           color=discord.Color.blue())
     msg = await ctx.send(embed=embed)
