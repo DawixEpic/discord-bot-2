@@ -84,4 +84,7 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, Twój ticket został utworzony!")
 
-bot.run("DISCORD_TOKEN")
+import os
+token = os.getenv("DISCORD_TOKEN")
+bot.run(token)
+
