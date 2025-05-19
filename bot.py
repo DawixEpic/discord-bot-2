@@ -85,6 +85,5 @@ async def on_raw_reaction_add(payload):
         await ticket_channel.send(f"{payload.member.mention}, Twój ticket został utworzony!")
 
 import os
-token = os.getenv("DISCORD_TOKEN")
-bot.run(token)
+bot.run(os.getenv("DISCORD_TOKEN"))
 
