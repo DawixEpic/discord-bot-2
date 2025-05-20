@@ -20,13 +20,21 @@ ticket_message_id = None
 
 # 🔧 Serwery, tryby i itemy (edytuj jak chcesz)
 SERVER_OPTIONS = {
-    "Survival": {
-        "Easy": ["Drewno", "Kamień", "Zbroja"],
-        "Hard": ["Diamenty", "Totemy", "Elytra"]
+    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
+        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
     },
-    "Skyblock": {
-        "Classic": ["Dirt", "Woda", "Lava"],
-        "OP": ["Spawner", "Bloki Żelaza", "Złote Jabłka"]
+    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
+         },
+    "𝐑𝐀𝐏𝐘": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
+         },
+    "𝐏𝐘𝐊𝐌𝐂": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
 
