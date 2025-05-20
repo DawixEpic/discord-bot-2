@@ -15,7 +15,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID swojego kanału logów
+LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
+TICKET_CHANNEL_ID = 1373281187446673429  # <-- ID kanału do ticketów (zmień na swój)
 
 verification_message_id = None
 ticket_message_id = None
@@ -103,11 +104,8 @@ async def on_raw_reaction_add(payload):
         # Automatyczne zamykanie po 1h
         await asyncio.sleep(3600)
         if ticket_channel:
-            try:
-                await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
-                await ticket_channel.delete()
-            except Exception:
-                pass
+            await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
+            await ticket_channel.delete()
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -183,14 +181,54 @@ class CloseButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_message("✅ Ticket zostanie zamknięty...", ephemeral=True)
-        try:
-            await self.channel.delete()
-        except Exception:
-            pass
+        await self.channel.delete()
 
 class CloseOnly(View):
     def __init__(self, channel):
         super().__init__(timeout=None)
         self.add_item(CloseButton(channel))
+
+# --- DODANA KOMENDA !oferta ---
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def oferta(ctx):
+    ticket_channel = bot.get_channel(TICKET_CHANNEL_ID)
+
+    if not ticket_channel:
+        await ctx.send("❌ Kanał ticketów nie został znaleziony!")
+        return
+
+    # Tabela z przedmiotami i cenami
+    items_with_prices = [
+        ("15K$", "1 ZŁ"),
+        ("BUDDA", "30 ZŁ"),
+        ("LOVE SWAP", "100 ZŁ"),
+        ("KLATA MEDUZY", "140 ZŁ")
+    ]
+
+    # Generowanie estetycznej tabeli
+    table = "```Nazwa przedmiotu       | Cena\n------------------------|--------\n"
+    for item, price in items_with_prices:
+        table += f"{item:<23} | {price}\n"
+    table += "```"
+
+    embed = discord.Embed(
+        title="💸 Oferta Specjalna",
+        description="Sprawdź dostępne przedmioty oraz ich ceny:\n" + table,
+        color=discord.Color.gold()
+    )
+
+    button = Button(
+        label="🎟️ Otwórz ticket",
+        style=discord.ButtonStyle.green,
+        url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}"
+    )
+
+    view = View()
+    view.add_item(button)
+
+    await ctx.send(embed=embed, view=view)
+
 
 bot.run(os.getenv("DISCORD_TOKEN"))
