@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
-TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału, gdzie są tickety (jeśli inny niż kategoria)
+TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału ticketów
 
 verification_message_id = None
 ticket_message_id = None
@@ -38,6 +38,53 @@ SERVER_OPTIONS = {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
+}
+
+OFFER_DATA = {
+    1373273108093337640: [
+        ("10MLD", "1 ZŁ"),
+        ("MIECZ35", "40 ZŁ"),
+        ("SET35", "57 ZŁ"),
+    ],
+    1373270295556788285: [
+        ("1 ZŁ", "50 K$"),
+        ("15 ZŁ", "1 MLN"),
+        ("EVENTOWKI", ""),
+        ("EXCALIBUR 45 +44% +1000 KILLI", "150 ZŁ"),
+        ("TOTEM UŁASKAWIENIA", "80 ZŁ"),
+        ("SAKIEWKA", "20 ZŁ"),
+    ],
+    1373268875407396914: [
+        ("1 ZŁ", "4,5 K$"),
+        ("10 ZŁ", "50 K$"),
+        ("100 ZŁ", "550 K$"),
+        ("21 ZŁ", "SET ANA 2"),
+        ("8 ZŁ", "SET ANA 1"),
+        ("MIECZE:", ""),
+        ("ANA 51%", "120 ZŁ"),
+        ("ANA 40%", "10 ZŁ"),
+        ("ANA 44%", "60 ZŁ"),
+        ("EVENTOWKI", ""),
+        ("ZAJĘCZY MIECZ", "65 ZŁ"),
+        ("TOTEM UŁASKAWIENIA", "170 ZŁ"),
+        ("EXCALIBUR 39%", "185 ZŁ"),
+    ],
+    1373267159576481842: [
+        ("SET25", "20 ZŁ"),
+        ("MIECZ25", "15 ZŁ"),
+        ("KILOF25", "5 ZŁ"),
+        ("1 MLN", "15 ZŁ"),
+    ],
+    1373266589310517338: [
+        ("ELYTRA", "8 ZŁ"),
+        ("BUTY FLASHA", "3 ZŁ"),
+        ("MIECZ6", "2 ZŁ"),
+        ("1K", "ZŁ"),
+        ("SHULKER S2", "2 ZŁ"),
+        ("SHULKER TOTEMÓW", "1 ZŁ"),
+        ("SPOSÓB NA KOPIOWANIE PRZEDMIOTÓW", "70 ZŁ"),
+        ("MOŻLIWOŚĆ ZAKUPU OD 10 ZŁ", ""),
+    ],
 }
 
 @bot.event
@@ -71,33 +118,35 @@ async def ticket(ctx):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def oferta(ctx):
-    try:
-        ticket_channel = await bot.fetch_channel(TICKET_CHANNEL_ID)
-    except Exception:
-        await ctx.send("❌ Kanał ticketów nie został znaleziony!")
-        return
+    for channel_id, items in OFFER_DATA.items():
+        try:
+            channel = await bot.fetch_channel(channel_id)
+            description = ""
+            for name, price in items:
+                if price:
+                    description += f"**{name}** — *Cena:* `{price}`\n"
+                else:
+                    description += f"**{name}**\n"
 
-    embed = discord.Embed(
-        title="🛒 Oferta itemów na sprzedaż",
-        description=(
-            "**Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!**\n\n"
-            "🎯 **15K$** — *Cena:* `1 ZŁ`\n"
-            "🌟 **BUDDA** — *Cena:* `30 ZŁ`\n"
-            "💖 **LOVE SWAP** — *Cena:* `100 ZŁ`\n"
-            "🐉 **KLATA MEDUZY** — *Cena:* `140 ZŁ`"
-        ),
-        color=discord.Color.blurple()
-    )
+            embed = discord.Embed(
+                title="🛒 Oferta itemów na sprzedaż",
+                description=description + "\n**Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!**",
+                color=discord.Color.blurple()
+            )
 
-    button = Button(
-        label="📝 Otwórz Ticket", style=discord.ButtonStyle.link,
-        url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}"
-    )
+            button = Button(
+                label="📝 Otwórz Ticket",
+                style=discord.ButtonStyle.link,
+                url=f"https://discord.com/channels/{ctx.guild.id}/{TICKET_CHANNEL_ID}"
+            )
+            view = View()
+            view.add_item(button)
 
-    view = View()
-    view.add_item(button)
+            await channel.send(embed=embed, view=view)
+        except Exception as e:
+            print(f"Nie udało się wysłać oferty na kanał {channel_id}: {e}")
 
-    await ctx.send(embed=embed, view=view)
+    await ctx.send("✅ Oferta została wysłana na wszystkie kanały.")
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -135,88 +184,4 @@ async def on_raw_reaction_add(payload):
         # Automatyczne zamykanie po 1h
         await asyncio.sleep(3600)
         if ticket_channel:
-            await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
-            await ticket_channel.delete()
-
-class MenuView(View):
-    def __init__(self, member, channel):
-        super().__init__(timeout=None)
-        self.member = member
-        self.channel = channel
-        self.server = None
-        self.mode = None
-
-        self.add_item(ServerSelect(self))
-        self.add_item(CloseButton(channel))
-
-class ServerSelect(Select):
-    def __init__(self, menu_view):
-        self.menu_view = menu_view
-        options = [discord.SelectOption(label=server) for server in SERVER_OPTIONS]
-        super().__init__(placeholder="🌍 Wybierz serwer", options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        self.menu_view.server = self.values[0]
-        self.menu_view.clear_items()
-        self.menu_view.add_item(ModeSelect(self.menu_view))
-        self.menu_view.add_item(CloseButton(self.menu_view.channel))
-        await interaction.response.edit_message(view=self.menu_view)
-
-class ModeSelect(Select):
-    def __init__(self, menu_view):
-        self.menu_view = menu_view
-        modes = SERVER_OPTIONS[menu_view.server].keys()
-        options = [discord.SelectOption(label=mode) for mode in modes]
-        super().__init__(placeholder="🎮 Wybierz tryb", options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        self.menu_view.mode = self.values[0]
-        self.menu_view.clear_items()
-        self.menu_view.add_item(ItemSelect(self.menu_view))
-        self.menu_view.add_item(CloseButton(self.menu_view.channel))
-        await interaction.response.edit_message(view=self.menu_view)
-
-class ItemSelect(Select):
-    def __init__(self, menu_view):
-        self.menu_view = menu_view
-        items = SERVER_OPTIONS[menu_view.server][menu_view.mode]
-        options = [discord.SelectOption(label=item) for item in items]
-        super().__init__(placeholder="📦 Wybierz itemy", options=options, min_values=1, max_values=len(items))
-
-    async def callback(self, interaction: discord.Interaction):
-        chosen = ", ".join(self.values)
-        embed = discord.Embed(
-            title="✅ Wybrano",
-            description=f"**Serwer:** {self.menu_view.server}\n**Tryb:** {self.menu_view.mode}\n**Itemy:** {chosen}",
-            color=discord.Color.green()
-        )
-        await interaction.response.edit_message(embed=embed, view=CloseOnly(self.menu_view.channel))
-
-        # Logowanie wyboru do kanału logów
-        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await log_channel.send(
-                f"📋 **Nowy wybór ticketu**\n"
-                f"Użytkownik: {interaction.user} ({interaction.user.id})\n"
-                f"Serwer: `{self.menu_view.server}`\n"
-                f"Tryb: `{self.menu_view.mode}`\n"
-                f"Itemy: `{chosen}`\n"
-                f"Czas: `{now}`"
-            )
-
-class CloseButton(Button):
-    def __init__(self, channel):
-        super().__init__(label="🗑️ Zamknij ticket", style=discord.ButtonStyle.danger)
-        self.channel = channel
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ Ticket zostanie zamknięty...", ephemeral=True)
-        await self.channel.delete()
-
-class CloseOnly(View):
-    def __init__(self, channel):
-        super().__init__(timeout=None)
-        self.add_item(CloseButton(channel))
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+           
