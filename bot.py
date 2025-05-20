@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
-TICKET_CHANNEL_ID = 1373281187446673429  # <-- ID kanału do ticketów (zmień na swój)
+TICKET_CHANNEL_ID = 1373305137228939416  # <-- ID kanału do ticketów (zmień na swój)
 
 verification_message_id = None
 ticket_message_id = None
