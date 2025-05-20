@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord.ui import Select, View
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -10,10 +9,15 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-ROLE_ID = 1373275307150278686
-TICKET_CATEGORY_ID = 1373277957446959135
+# 🔧 Ustawienia – podaj swoje ID
+ROLE_ID = 1373275307150278686  # rola do nadania przy weryfikacji
+TICKET_CATEGORY_ID = 1373277957446959135  # kategoria do ticketów
 
 verification_message_id = None
+ticket_message_id = None
+
+# Słownik do przechowywania wyborów użytkowników
+user_selections = {}
 
 @bot.event
 async def on_ready():
@@ -25,11 +29,9 @@ async def weryfikacja(ctx):
     embed = discord.Embed(
         title="✅ Weryfikacja",
         description="Kliknij ✅ aby się zweryfikować i dostać dostęp.",
-        color=discord.Color.green()
-    )
+        color=discord.Color.green())
     msg = await ctx.send(embed=embed)
     await msg.add_reaction("✅")
-
     global verification_message_id
     verification_message_id = msg.id
     await ctx.send("✅ Wiadomość weryfikacyjna została wysłana.")
@@ -37,45 +39,109 @@ async def weryfikacja(ctx):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket(ctx):
-    class PurchaseSelect(Select):
-        def __init__(self):
-            options = [
-                discord.SelectOption(label="Item 1", description="Kup Item 1"),
-                discord.SelectOption(label="Item 2", description="Kup Item 2"),
-                discord.SelectOption(label="Item 3", description="Kup Item 3"),
-            ]
-            super().__init__(placeholder="Wybierz przedmiot do zakupu...", options=options, min_values=1, max_values=1)
+    embed = discord.Embed(
+        title="🎟️ Napisz co chcesz kupic",
+        description="Kliknij 🎟️ aby otworzyć prywatny ticket i wybrać opcje.",
+        color=discord.Color.blue())
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("🎟️")
+    global ticket_message_id
+    ticket_message_id = msg.id
+    await ctx.send("✅ Wiadomość ticket została wysłana.")
 
-        async def callback(self, interaction: discord.Interaction):
-            guild = interaction.guild
-            member = interaction.user
-            category = guild.get_channel(TICKET_CATEGORY_ID)
+# --- Klasy widoków i selectów do menu ---
 
-            if not isinstance(category, discord.CategoryChannel):
-                await interaction.response.send_message("Kategoria na tickety nie została znaleziona.", ephemeral=True)
-                return
+class ServerSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Serwer 1", description="Serwer główny"),
+            discord.SelectOption(label="Serwer 2", description="Serwer zapasowy"),
+            discord.SelectOption(label="Serwer 3", description="Serwer testowy")
+        ]
+        super().__init__(placeholder="Wybierz serwer...", min_values=1, max_values=1, options=options)
 
-            channel_name = f"ticket-{member.name}".lower()
-            existing = discord.utils.get(guild.channels, name=channel_name)
-            if existing:
-                await interaction.response.send_message(f"Masz już otwarty ticket: {existing.mention}", ephemeral=True)
-                return
+    async def callback(self, interaction: discord.Interaction):
+        user_selections[interaction.user.id] = {"server": self.values[0]}
+        await interaction.response.send_message("Wybrałeś serwer: **{}**\nTeraz wybierz tryb:".format(self.values[0]), ephemeral=True)
+        await interaction.followup.send(view=ModeSelectView(), ephemeral=True)
 
-            overwrites = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            }
+class ModeSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Tryb 1", description="Tryb PvP"),
+            discord.SelectOption(label="Tryb 2", description="Tryb Survival"),
+            discord.SelectOption(label="Tryb 3", description="Tryb Kreatywny")
+        ]
+        super().__init__(placeholder="Wybierz tryb...", min_values=1, max_values=1, options=options)
 
-            ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-            await ticket_channel.send(f"{member.mention}, utworzono ticket dotyczący: **{self.values[0]}**")
+    async def callback(self, interaction: discord.Interaction):
+        user_selections[interaction.user.id]["mode"] = self.values[0]
+        await interaction.response.send_message("Wybrałeś tryb: **{}**\nTeraz wybierz item:".format(self.values[0]), ephemeral=True)
+        await interaction.followup.send(view=ItemSelectView(), ephemeral=True)
 
-            await interaction.response.send_message(f"Ticket dotyczący **{self.values[0]}** został utworzony: {ticket_channel.mention}", ephemeral=True)
+class ItemSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Item 1", description="Miecz diamentowy"),
+            discord.SelectOption(label="Item 2", description="Zbroja złota"),
+            discord.SelectOption(label="Item 3", description="Kilof żelazny")
+        ]
+        super().__init__(placeholder="Wybierz item...", min_values=1, max_values=1, options=options)
 
-    view = View()
-    view.add_item(PurchaseSelect())
+    async def callback(self, interaction: discord.Interaction):
+        user_selections[interaction.user.id]["item"] = self.values[0]
 
-    await ctx.send("Wybierz przedmiot, który chcesz kupić:", view=view)
+        # Tworzymy ticket z wybranymi opcjami
+        guild = interaction.guild
+        member = interaction.user
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+        if not isinstance(category, discord.CategoryChannel):
+            await interaction.response.send_message("Nie znaleziono kategorii ticketów.", ephemeral=True)
+            return
+
+        # Sprawdź czy ticket już istnieje
+        channel_name = f"ticket-{member.name}".lower()
+        existing = discord.utils.get(guild.channels, name=channel_name)
+        if existing:
+            await interaction.response.send_message("Masz już otwarty ticket.", ephemeral=True)
+            return
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+
+        embed = discord.Embed(title="Nowy Ticket",
+                              description=f"Użytkownik {member.mention} utworzył ticket z wyborem:",
+                              color=discord.Color.blue())
+        embed.add_field(name="Serwer", value=user_selections[member.id]["server"], inline=False)
+        embed.add_field(name="Tryb", value=user_selections[member.id]["mode"], inline=False)
+        embed.add_field(name="Item", value=user_selections[member.id]["item"], inline=False)
+
+        await ticket_channel.send(embed=embed)
+        await interaction.response.send_message(f"Ticket został utworzony: {ticket_channel.mention}", ephemeral=True)
+
+        # Usuń zapis wyborów użytkownika
+        del user_selections[member.id]
+
+class ServerSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(ServerSelect())
+
+class ModeSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(ModeSelect())
+
+class ItemSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(ItemSelect())
+
+# --- Obsługa reakcji ---
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -84,13 +150,19 @@ async def on_raw_reaction_add(payload):
 
     guild = bot.get_guild(payload.guild_id)
 
-    # Weryfikacja
+    # ✅ WERYFIKACJA
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
         if role:
             await payload.member.add_roles(role)
             channel = guild.get_channel(payload.channel_id)
             await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
+
+    # 🎟️ TICKETY - tutaj zamiast tworzyć ticket na reakcję, wysyłamy menu wyboru
+    elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
+        channel = guild.get_channel(payload.channel_id)
+        member = payload.member
+        await channel.send(f"{member.mention}, wybierz serwer z poniższego menu:", view=ServerSelectView())
 
 import os
 bot.run(os.getenv("DISCORD_TOKEN"))
