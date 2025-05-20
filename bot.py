@@ -184,4 +184,58 @@ async def on_raw_reaction_add(payload):
         # Automatyczne zamykanie po 1h
         await asyncio.sleep(3600)
         if ticket_channel:
-           
+            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+
+class MenuView(View):
+    def __init__(self, member, channel):
+        super().__init__(timeout=None)
+        self.member = member
+        self.channel = channel
+        self.selected_server = None
+        self.selected_mode = None
+
+        self.server_select = Select(
+            placeholder="Wybierz serwer",
+            options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
+            custom_id="server_select"
+        )
+        self.server_select.callback = self.server_callback
+        self.add_item(self.server_select)
+
+    async def server_callback(self, interaction: discord.Interaction):
+        self.selected_server = interaction.data['values'][0]
+        modes = SERVER_OPTIONS.get(self.selected_server, {})
+        self.mode_select = Select(
+            placeholder="Wybierz tryb",
+            options=[discord.SelectOption(label=mode) for mode in modes.keys()],
+            custom_id="mode_select"
+        )
+        self.mode_select.callback = self.mode_callback
+        self.clear_items()
+        self.add_item(self.server_select)
+        self.add_item(self.mode_select)
+        await interaction.response.edit_message(view=self)
+
+    async def mode_callback(self, interaction: discord.Interaction):
+        self.selected_mode = interaction.data['values'][0]
+        items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
+        self.item_select = Select(
+            placeholder="Wybierz item",
+            options=[discord.SelectOption(label=item) for item in items],
+            custom_id="item_select"
+        )
+        self.item_select.callback = self.item_callback
+        self.clear_items()
+        self.add_item(self.server_select)
+        self.add_item(self.mode_select)
+        self.add_item(self.item_select)
+        await interaction.response.edit_message(view=self)
+
+    async def item_callback(self, interaction: discord.Interaction):
+        selected_item = interaction.data['values'][0]
+        await interaction.response.send_message(f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Item: {selected_item}", ephemeral=True)
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            await log_channel.send(f"{interaction.user} wybrał: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Item: {selected_item}")
+
+bot.run(os.getenv("DISCORD_TOKEN"))
