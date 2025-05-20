@@ -1,9 +1,8 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import View, Select, Button
 import asyncio
 import os
-import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -15,27 +14,26 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID swojego kanału logów
 
 verification_message_id = None
 ticket_message_id = None
 
 SERVER_OPTIONS = {
-    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
-        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
+    "𝓐𝓷𝓮𝓲𝓣𝓢𝓮": {
+        "𝒬𝓽𝓮𝓲": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
+        "𝒫𝓮𝓳𝓮": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
     },
-    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
+    "𝐀𝐍𝐀𝐛𝐈𝐀": {
+        "𝒷𝓾𝓻𝓮𝓲": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
+        "𝒫𝓮𝓳𝓮": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
     },
-    "𝐑𝐀𝐏𝐘": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
+    "𝓑𝒶𝓹": {
+        "𝒷𝓾𝓻𝓮𝓲": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝒫𝓮𝓳𝓮": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
     },
-    "𝐏𝐘𝐊𝐌𝐂": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
+    "𝓕𝓲𝓫𝒶": {
+        "𝒷𝓾𝓻𝓮𝓲": ["Budda", "Love swap", "Klata meduzy"],
+        "𝒫𝓮𝓳𝓮": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
 
@@ -50,7 +48,7 @@ async def weryfikacja(ctx):
                           description="Kliknij ✅ aby się zweryfikować i dostać dostęp.",
                           color=discord.Color.green())
     msg = await ctx.send(embed=embed)
-    await msg.add_reaction("✅")
+    await msg.add_reaction("\u2705")
     global verification_message_id
     verification_message_id = msg.id
     await ctx.send("✅ Wiadomość weryfikacyjna została wysłana.")
@@ -73,34 +71,39 @@ async def on_raw_reaction_add(payload):
         return
 
     guild = bot.get_guild(payload.guild_id)
+    channel = guild.get_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+    user = payload.member
 
+    # Weryfikacja
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
         if role:
-            await payload.member.add_roles(role)
-            channel = guild.get_channel(payload.channel_id)
-            await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
+            await user.add_roles(role)
+            await channel.send(f"{user.mention}, zostałeś zweryfikowany!", delete_after=5)
+        await message.remove_reaction(payload.emoji, user)
 
+    # Ticket
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
             return
 
-        channel_name = f"ticket-{payload.member.name}".lower()
+        channel_name = f"ticket-{user.name}".lower()
         existing = discord.utils.get(guild.channels, name=channel_name)
         if existing:
             return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            payload.member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
+        await ticket_channel.send(f"{user.mention}, wybierz co chcesz kupić:", view=MenuView(user, ticket_channel))
+        await message.remove_reaction(payload.emoji, user)
 
-        # Automatyczne zamykanie po 1h
         await asyncio.sleep(3600)
         if ticket_channel:
             await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
@@ -113,7 +116,6 @@ class MenuView(View):
         self.channel = channel
         self.server = None
         self.mode = None
-
         self.add_item(ServerSelect(self))
         self.add_item(CloseButton(channel))
 
@@ -159,19 +161,6 @@ class ItemSelect(Select):
             color=discord.Color.green()
         )
         await interaction.response.edit_message(embed=embed, view=CloseOnly(self.menu_view.channel))
-
-        # Logowanie wyboru do kanału logów
-        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await log_channel.send(
-                f"📋 **Nowy wybór ticketu**\n"
-                f"Użytkownik: {interaction.user} ({interaction.user.id})\n"
-                f"Serwer: `{self.menu_view.server}`\n"
-                f"Tryb: `{self.menu_view.mode}`\n"
-                f"Itemy: `{chosen}`\n"
-                f"Czas: `{now}`"
-            )
 
 class CloseButton(Button):
     def __init__(self, channel):
