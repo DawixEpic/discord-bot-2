@@ -1,6 +1,7 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import View, Select, Button
+import asyncio
 import os
 
 intents = discord.Intents.default()
@@ -11,14 +12,12 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 🔧 Twoje ID
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 
 verification_message_id = None
 ticket_message_id = None
 
-# 🔧 Serwery, tryby i itemy (edytuj jak chcesz)
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
         "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
@@ -27,11 +26,11 @@ SERVER_OPTIONS = {
     "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
-         },
+    },
     "𝐑𝐀𝐏𝐘": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
-         },
+    },
     "𝐏𝐘𝐊𝐌𝐂": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
@@ -73,7 +72,6 @@ async def on_raw_reaction_add(payload):
 
     guild = bot.get_guild(payload.guild_id)
 
-    # ✅ WERYFIKACJA
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
         if role:
@@ -81,7 +79,6 @@ async def on_raw_reaction_add(payload):
             channel = guild.get_channel(payload.channel_id)
             await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
-    # 🎟️ TICKET
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
@@ -99,74 +96,81 @@ async def on_raw_reaction_add(payload):
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await ticket_channel.send(f"{payload.member.mention}, wybierz z poniższego menu co chcesz kupić:")
+        await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        await send_menu(ticket_channel, payload.member)
+        # Automatyczne zamykanie po 1h
+        await asyncio.sleep(3600)
+        if ticket_channel:
+            await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
+            await ticket_channel.delete()
 
-# 🧠 Funkcja do wysyłania menu
-async def send_menu(channel, member):
-    view = MenuView(member)
-    embed = discord.Embed(
-        title="🛒 Wybierz co chcesz kupić",
-        description="Wybierz serwer, tryb i itemy, które chcesz kupić.",
-        color=discord.Color.gold()
-    )
-    await channel.send(embed=embed, view=view)
-
-# 📦 Klasa menu wyboru
+# 🔄 MENU
 class MenuView(View):
-    def __init__(self, member):
+    def __init__(self, member, channel):
         super().__init__(timeout=None)
         self.member = member
+        self.channel = channel
         self.server = None
         self.mode = None
 
-        self.select_server = Select(
-            placeholder="🌍 Wybierz serwer",
-            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
+        self.add_item(ServerSelect(self))
+        self.add_item(CloseButton(channel))
+
+class ServerSelect(Select):
+    def __init__(self, menu_view):
+        self.menu_view = menu_view
+        options = [discord.SelectOption(label=server) for server in SERVER_OPTIONS]
+        super().__init__(placeholder="🌍 Wybierz serwer", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        self.menu_view.server = self.values[0]
+        self.menu_view.clear_items()
+        self.menu_view.add_item(ModeSelect(self.menu_view))
+        self.menu_view.add_item(CloseButton(self.menu_view.channel))
+        await interaction.response.edit_message(view=self.menu_view)
+
+class ModeSelect(Select):
+    def __init__(self, menu_view):
+        self.menu_view = menu_view
+        modes = SERVER_OPTIONS[menu_view.server].keys()
+        options = [discord.SelectOption(label=mode) for mode in modes]
+        super().__init__(placeholder="🎮 Wybierz tryb", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        self.menu_view.mode = self.values[0]
+        self.menu_view.clear_items()
+        self.menu_view.add_item(ItemSelect(self.menu_view))
+        self.menu_view.add_item(CloseButton(self.menu_view.channel))
+        await interaction.response.edit_message(view=self.menu_view)
+
+class ItemSelect(Select):
+    def __init__(self, menu_view):
+        self.menu_view = menu_view
+        items = SERVER_OPTIONS[menu_view.server][menu_view.mode]
+        options = [discord.SelectOption(label=item) for item in items]
+        super().__init__(placeholder="📦 Wybierz itemy", options=options, min_values=1, max_values=len(items))
+
+    async def callback(self, interaction: discord.Interaction):
+        chosen = ", ".join(self.values)
+        embed = discord.Embed(
+            title="✅ Wybrano",
+            description=f"**Serwer:** {self.menu_view.server}\n**Tryb:** {self.menu_view.mode}\n**Itemy:** {chosen}",
+            color=discord.Color.green()
         )
-        self.select_server.callback = self.server_chosen
-        self.add_item(self.select_server)
+        await interaction.response.edit_message(embed=embed, view=CloseOnly(self.menu_view.channel))
 
-    async def server_chosen(self, interaction: discord.Interaction):
-        self.server = self.select_server.values[0]
-        self.clear_items()
+class CloseButton(Button):
+    def __init__(self, channel):
+        super().__init__(label="🗑️ Zamknij ticket", style=discord.ButtonStyle.danger)
+        self.channel = channel
 
-        self.select_mode = Select(
-            placeholder="🎮 Wybierz tryb",
-            options=[discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()]
-        )
-        self.select_mode.callback = self.mode_chosen
-        self.add_item(self.select_mode)
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message("✅ Ticket zostanie zamknięty...", ephemeral=True)
+        await self.channel.delete()
 
-        await interaction.response.edit_message(view=self)
-
-    async def mode_chosen(self, interaction: discord.Interaction):
-        self.mode = self.select_mode.values[0]
-        self.clear_items()
-
-        self.select_items = Select(
-            placeholder="📦 Wybierz itemy",
-            options=[
-                discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]
-            ],
-            min_values=1,
-            max_values=len(SERVER_OPTIONS[self.server][self.mode])
-        )
-        self.select_items.callback = self.items_chosen
-        self.add_item(self.select_items)
-
-        await interaction.response.edit_message(view=self)
-
-    async def items_chosen(self, interaction: discord.Interaction):
-        chosen_items = ", ".join(self.select_items.values)
-        summary = (
-            f"📄 Wybrałeś:\n"
-            f"**Serwer:** {self.server}\n"
-            f"**Tryb:** {self.mode}\n"
-            f"**Itemy:** {chosen_items}"
-        )
-        embed = discord.Embed(title="✅ Wybór zapisany", description=summary, color=discord.Color.green())
-        await interaction.response.edit_message(embed=embed, view=None)
+class CloseOnly(View):
+    def __init__(self, channel):
+        super().__init__(timeout=None)
+        self.add_item(CloseButton(channel))
 
 bot.run(os.getenv("DISCORD_TOKEN"))
