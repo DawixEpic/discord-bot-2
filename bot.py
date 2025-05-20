@@ -1,8 +1,9 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
 import os
+import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,6 +15,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
+LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID swojego kanału logów
 
 verification_message_id = None
 ticket_message_id = None
@@ -104,7 +106,6 @@ async def on_raw_reaction_add(payload):
             await ticket_channel.send("⏰ Ticket został automatycznie zamknięty.")
             await ticket_channel.delete()
 
-# 🔄 MENU
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
@@ -158,6 +159,19 @@ class ItemSelect(Select):
             color=discord.Color.green()
         )
         await interaction.response.edit_message(embed=embed, view=CloseOnly(self.menu_view.channel))
+
+        # Logowanie wyboru do kanału logów
+        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            await log_channel.send(
+                f"📋 **Nowy wybór ticketu**\n"
+                f"Użytkownik: {interaction.user} ({interaction.user.id})\n"
+                f"Serwer: `{self.menu_view.server}`\n"
+                f"Tryb: `{self.menu_view.mode}`\n"
+                f"Itemy: `{chosen}`\n"
+                f"Czas: `{now}`"
+            )
 
 class CloseButton(Button):
     def __init__(self, channel):
