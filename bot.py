@@ -15,8 +15,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
-TICKET_CHANNEL_ID = 1373305137228939416  # <-- ID kanału do ticketów (zmień na swój)
+LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw ID kanału logów
+TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw ID kanału ticketów (ten sam co kategoria lub konkretny kanał)
 
 verification_message_id = None
 ticket_message_id = None
@@ -67,6 +67,41 @@ async def ticket(ctx):
     global ticket_message_id
     ticket_message_id = msg.id
     await ctx.send("✅ Wiadomość ticket została wysłana.")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def oferta(ctx):
+    try:
+        ticket_channel = await bot.fetch_channel(TICKET_CHANNEL_ID)
+    except Exception:
+        await ctx.send("❌ Kanał ticketów nie został znaleziony!")
+        return
+
+    embed = discord.Embed(
+        title="🛒 Oferta itemów na sprzedaż",
+        description="Poniżej znajdziesz dostępne itemy wraz z cenami:",
+        color=discord.Color.blue()
+    )
+
+    # Przykładowe itemy z cenami
+    items = {
+        "15K$": "1 ZŁ",
+        "BUDDA": "30 ZŁ",
+        "LOVE SWAP": "100 ZŁ",
+        "KLATA MEDUZY": "140 ZŁ"
+    }
+
+    for name, price in items.items():
+        embed.add_field(name=name, value=f"Cena: **{price}**", inline=False)
+
+    embed.set_footer(text="Kliknij przycisk, aby otworzyć ticket i dokonać zakupu.")
+
+    button = Button(label="📝 Otwórz Ticket", style=discord.ButtonStyle.link, url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}")
+
+    view = View()
+    view.add_item(button)
+
+    await ctx.send(embed=embed, view=view)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -187,48 +222,5 @@ class CloseOnly(View):
     def __init__(self, channel):
         super().__init__(timeout=None)
         self.add_item(CloseButton(channel))
-
-# --- DODANA KOMENDA !oferta ---
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def oferta(ctx):
-    ticket_channel = bot.get_channel(TICKET_CHANNEL_ID)
-
-    if not ticket_channel:
-        await ctx.send("❌ Kanał ticketów nie został znaleziony!")
-        return
-
-    # Tabela z przedmiotami i cenami
-    items_with_prices = [
-        ("15K$", "1 ZŁ"),
-        ("BUDDA", "30 ZŁ"),
-        ("LOVE SWAP", "100 ZŁ"),
-        ("KLATA MEDUZY", "140 ZŁ")
-    ]
-
-    # Generowanie estetycznej tabeli
-    table = "```Nazwa przedmiotu       | Cena\n------------------------|--------\n"
-    for item, price in items_with_prices:
-        table += f"{item:<23} | {price}\n"
-    table += "```"
-
-    embed = discord.Embed(
-        title="💸 Oferta Specjalna",
-        description="Sprawdź dostępne przedmioty oraz ich ceny:\n" + table,
-        color=discord.Color.gold()
-    )
-
-    button = Button(
-        label="🎟️ Otwórz ticket",
-        style=discord.ButtonStyle.green,
-        url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}"
-    )
-
-    view = View()
-    view.add_item(button)
-
-    await ctx.send(embed=embed, view=view)
-
 
 bot.run(os.getenv("DISCORD_TOKEN"))
