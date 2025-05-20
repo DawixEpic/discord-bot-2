@@ -15,8 +15,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw ID kanału logów
-TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw ID kanału ticketów (ten sam co kategoria lub konkretny kanał)
+LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
+TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału, gdzie są tickety (jeśli inny niż kategoria)
 
 verification_message_id = None
 ticket_message_id = None
@@ -79,24 +79,20 @@ async def oferta(ctx):
 
     embed = discord.Embed(
         title="🛒 Oferta itemów na sprzedaż",
-        description="Poniżej znajdziesz dostępne itemy wraz z cenami:",
-        color=discord.Color.blue()
+        description=(
+            "**Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!**\n\n"
+            "🎯 **15K$** — *Cena:* `1 ZŁ`\n"
+            "🌟 **BUDDA** — *Cena:* `30 ZŁ`\n"
+            "💖 **LOVE SWAP** — *Cena:* `100 ZŁ`\n"
+            "🐉 **KLATA MEDUZY** — *Cena:* `140 ZŁ`"
+        ),
+        color=discord.Color.blurple()
     )
 
-    # Przykładowe itemy z cenami
-    items = {
-        "15K$": "1 ZŁ",
-        "BUDDA": "30 ZŁ",
-        "LOVE SWAP": "100 ZŁ",
-        "KLATA MEDUZY": "140 ZŁ"
-    }
-
-    for name, price in items.items():
-        embed.add_field(name=name, value=f"Cena: **{price}**", inline=False)
-
-    embed.set_footer(text="Kliknij przycisk, aby otworzyć ticket i dokonać zakupu.")
-
-    button = Button(label="📝 Otwórz Ticket", style=discord.ButtonStyle.link, url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}")
+    button = Button(
+        label="📝 Otwórz Ticket", style=discord.ButtonStyle.link,
+        url=f"https://discord.com/channels/{ctx.guild.id}/{ticket_channel.id}"
+    )
 
     view = View()
     view.add_item(button)
