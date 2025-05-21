@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
 import os
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,8 +15,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID swojego kanału logów
-TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału ticketów
+LOG_CHANNEL_ID = 1374479815914291240
+TICKET_CHANNEL_ID = 1373305137228939416
 
 verification_message_id = None
 ticket_message_id = None
@@ -40,52 +41,12 @@ SERVER_OPTIONS = {
 }
 
 OFFER_DATA = {
-    1373273108093337640: [
-        ("💸 10mld$", "1zł"),
-        ("🗡️ Miecz 35", "40zł"),
-        ("🛡️ Set 35", "57zł"),
-    ],
-    1373270295556788285: [
-        ("💵 50k$", "1zł"),
-        ("💰 1mln$", "15zł"),
-        ("🎉 EVENTOWKI:", ""),
-        ("⚔️ Excalibur", "270zł"),
-        ("🌀 Totem ułaskawienia", "80zł"),
-        ("🎒 Sakiewka", "20zł"),
-    ],
-    1373268875407396914: [
-        ("💸 4,5k$", "1zł"),
-        ("💸 50k$", "15zł"),
-        ("💸 550k$", "130zł"),
-        ("🛡️ Anarchiczny set 2", "28zł"),
-        ("🛡️ Anarchiczny set 1", "9zł"),
-        ("⚔️ MIECZE:", ""),
-        ("🗡️ Anarchiczny miecz", "3zł"),
-        ("🎉 EVENTÓWKI:", ""),
-        ("🐰 Zajęczy miecz", "65zł"),
-        ("🌀 Totem ułaskawienia", "170zł"),
-        ("🪙 Excalibur", "360zł"),
-    ],
-    1373267159576481842: [
-        ("🛡️ Set 25", "30zł"),
-        ("🗡️ Miecz 25", "25zł"),
-        ("⛏️ Kilof 25", "10zł"),
-        ("💰 1mln$", "18zł"),
-    ],
-    1373266589310517338: [
-        ("🪽 Elytra", "12zł"),
-        ("👟 Buty flasha", "5zł"),
-        ("🗡️ Miecz 6", "3zł"),
-        ("💵 1k$", "1zł"),
-        ("📦 Shulker s2", "7zł"),
-        ("📦 Shulker totemów", "6zł"),
-    ],
-    1374380939970347019: [
-        ("💸 15k$", "1zł"),
-        ("🌟 Budda", "30zł"),
-        ("💖 Love swap", "100zł"),
-        ("🐉 Klata meduzy", "140zł"),
-    ],
+    1373273108093337640: [("💸 10mld$", "1zł"), ("🗡️ Miecz 35", "40zł"), ("🛡️ Set 35", "57zł")],
+    1373270295556788285: [("💵 50k$", "1zł"), ("💰 1mln$", "15zł"), ("🎉 EVENTOWKI:", ""), ("⚔️ Excalibur", "270zł"), ("🌀 Totem ułaskawienia", "80zł"), ("🎒 Sakiewka", "20zł")],
+    1373268875407396914: [("💸 4,5k$", "1zł"), ("💸 50k$", "15zł"), ("💸 550k$", "130zł"), ("🛡️ Anarchiczny set 2", "28zł"), ("🛡️ Anarchiczny set 1", "9zł"), ("⚔️ MIECZE:", ""), ("🗡️ Anarchiczny miecz", "3zł"), ("🎉 EVENTÓWKI:", ""), ("🐰 Zajęczy miecz", "65zł"), ("🌀 Totem ułaskawienia", "170zł"), ("🪙 Excalibur", "360zł")],
+    1373267159576481842: [("🛡️ Set 25", "30zł"), ("🗡️ Miecz 25", "25zł"), ("⛏️ Kilof 25", "10zł"), ("💰 1mln$", "18zł")],
+    1373266589310517338: [("🪽 Elytra", "12zł"), ("👟 Buty flasha", "5zł"), ("🗡️ Miecz 6", "3zł"), ("💵 1k$", "1zł"), ("📦 Shulker s2", "7zł"), ("📦 Shulker totemów", "6zł")],
+    1374380939970347019: [("💸 15k$", "1zł"), ("🌟 Budda", "30zł"), ("💖 Love swap", "100zł"), ("🐉 Klata meduzy", "140zł")]
 }
 
 
@@ -97,9 +58,7 @@ async def on_ready():
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def weryfikacja(ctx):
-    embed = discord.Embed(title="✅ Weryfikacja",
-                          description="Kliknij ✅ aby się zweryfikować i dostać dostęp.",
-                          color=discord.Color.green())
+    embed = discord.Embed(title="✅ Weryfikacja", description="Kliknij ✅ aby się zweryfikować i dostać dostęp.", color=discord.Color.green())
     msg = await ctx.send(embed=embed)
     await msg.add_reaction("✅")
     global verification_message_id
@@ -110,9 +69,7 @@ async def weryfikacja(ctx):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket(ctx):
-    embed = discord.Embed(title="🎟️ Napisz co chcesz kupić",
-                          description="Kliknij 🎟️ aby otworzyć prywatny ticket z wyborem opcji.",
-                          color=discord.Color.blue())
+    embed = discord.Embed(title="🎟️ Napisz co chcesz kupić", description="Kliknij 🎟️ aby otworzyć prywatny ticket z wyborem opcji.", color=discord.Color.blue())
     msg = await ctx.send(embed=embed)
     await msg.add_reaction("🎟️")
     global ticket_message_id
@@ -187,7 +144,6 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        # Automatyczne zamknięcie po 1h
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
@@ -202,7 +158,6 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
-        # Start z wyborem serwera
         self.server_select = Select(
             placeholder="Wybierz serwer",
             options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
@@ -216,7 +171,6 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
-        # Przygotuj select trybów dla wybranego serwera
         modes = SERVER_OPTIONS.get(self.selected_server, {})
         self.mode_select = Select(
             placeholder="Wybierz tryb",
@@ -225,7 +179,6 @@ class MenuView(View):
         )
         self.mode_select.callback = self.mode_callback
 
-        # Odśwież widok: pokaż serwer i tryb
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -236,18 +189,16 @@ class MenuView(View):
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
-        # Przygotuj select itemów (multi-select) dla serwera i trybu
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
             placeholder="Wybierz item(y) (możesz zaznaczyć wiele)",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
-            max_values=len(items)  # max liczba zaznaczeń to liczba itemów
+            max_values=len(items)
         )
         self.item_select.callback = self.item_callback
 
-        # Odśwież widok: serwer, tryb i itemy
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -255,22 +206,19 @@ class MenuView(View):
 
         await interaction.response.edit_message(content=None, view=self)
 
-        async def item_callback(self, interaction: discord.Interaction):
+    async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
-        # Podsumowanie wyborów w treści wiadomości
         summary = (
             f"**Serwer:** `{self.selected_server}`\n"
             f"**Tryb:** `{self.selected_mode}`\n"
             f"**Wybrane itemy:** {', '.join(self.selected_items)}"
         )
-        
+
         await interaction.response.edit_message(content=summary, view=self)
 
-        # Logowanie do kanału logów w ładnym formacie
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            from datetime import datetime
             time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             message = (
                 f"📋 Nowy wybór ticketu\n"
