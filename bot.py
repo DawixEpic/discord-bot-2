@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
-import os
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,30 +13,38 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 123456789012345678  # <-- Wstaw tutaj ID swojego kanału logów
-TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału ticketów
+LOG_CHANNEL_ID = 123456789012345678
+TICKET_CHANNEL_ID = 1373305137228939416
 
 verification_message_id = None
 ticket_message_id = None
 
 SERVER_OPTIONS = {
-    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
-        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
+    "𝓑𝓪𝓲𝓮𝓳𝓸𝓲𝓮𝓻": {
+        "𝓑𝓪𝓵𝓮𝓲": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
+        "𝓑𝓮𝓹𝓳𝓵": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
     },
-    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
+    "𝒐𝒶𝓂𝒶𝓁𝓅𝒶": {
+        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
+        "𝓑𝓮𝓹𝓳𝓵": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
     },
-    "𝐑𝐀𝐏𝐘": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
+    "𝒑𝓆𝓏𝓀": {
+        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝓑𝓮𝓹𝓳𝓵": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
     },
-    "𝐏𝐘𝐊𝐌𝐂": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
+    "𝓏𝓈𝓖𝓆": {
+        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["Budda", "Love swap", "Klata meduzy"],
+        "𝓑𝓮𝓹𝓳𝓵": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
+
+class TicketData:
+    def __init__(self):
+        self.server = None
+        self.mode = None
+        self.items = []
+
+user_ticket_data = {}
 
 OFFER_DATA = {
     1373273108093337640: [
