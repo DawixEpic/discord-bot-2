@@ -17,6 +17,7 @@ ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 TICKET_CHANNEL_ID = 1373305137228939416
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820  # tutaj id kanału do wysyłania panelu admina
 
 verification_message_id = None
 ticket_message_id = None
@@ -28,7 +29,7 @@ SERVER_OPTIONS = {
     },
     "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułaskawienia", "Sakiewka", "50k$", "1mln"]
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
     },
     "𝐑𝐀𝐏𝐘": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
@@ -93,6 +94,20 @@ OFFER_DATA = {
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
+
+    channel = bot.get_channel(ADMIN_PANEL_CHANNEL_ID)
+    if channel:
+        embed = discord.Embed(
+            title="Panel administracyjny ticketów",
+            description="Użyj przycisków poniżej aby zarządzać ticketami.\n\n"
+                        "- Zamknij ten ticket (usuwa kanał, działa w kanale ticketu)\n"
+                        "- Pokaż listę ticketów (lista otwartych kanałów ticketów)",
+            color=discord.Color.red()
+        )
+        view = AdminPanelView()
+        await channel.send(embed=embed, view=view)
+    else:
+        print("❌ Nie znaleziono kanału do wysłania panelu admina.")
 
 
 @bot.command()
@@ -173,14 +188,14 @@ async def on_raw_reaction_add(payload):
             channel = guild.get_channel(payload.channel_id)
             await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
-        # Usunięto czyszczenie reakcji, aby reakcja nie znikała
+        # **Usunięto clear_reaction, żeby reakcja nie znikała**
 
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
             return
 
-        # Usunięto czyszczenie reakcji, aby reakcja nie znikała
+        # **Usunięto clear_reaction, żeby reakcja nie znikała**
 
         channel_name = f"ticket-{payload.member.name}".lower()
         existing = discord.utils.get(guild.channels, name=channel_name)
@@ -261,85 +276,42 @@ class MenuView(View):
 
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
-
-        summary = (
-            f"**Serwer:** `{self.selected_server}`\n"
-            f"**Tryb:** `{self.selected_mode}`\n"
-            f"**Wybrane itemy:** {', '.join(self.selected_items)}"
-        )
-
-        await interaction.response.edit_message(content=summary, view=self)
-
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            message = (
-                f"📋 Nowy wybór ticketu\n"
-                f"Użytkownik: {interaction.user.name} ({interaction.user.id})\n"
-                f"Serwer: {self.selected_server}\n"
-                f"Tryb: {self.selected_mode}\n"
-                f"Itemy: {', '.join(self.selected_items)}\n"
-                f"Czas: {time_str}"
-            )
-            await log_channel.send(message)
+        await interaction.response.send_message(f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}", ephemeral=True)
 
 
 class AdminPanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(Button(label="Zamknij ten ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket"))
-        self.add_item(Button(label="Pokaż listę ticketów", style=discord.ButtonStyle.primary, custom_id="list_tickets"))
+        self.close_button = Button(label="Zamknij ten ticket", style=discord.ButtonStyle.danger)
+        self.list_button = Button(label="Pokaż listę ticketów", style=discord.ButtonStyle.secondary)
 
-    @discord.ui.button(label="Zamknij ten ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket")
-    async def close_ticket_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # Tylko admin z uprawnieniem manage_channels może użyć
-        if not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do zamykania ticketów.", ephemeral=True)
-            return
+        self.close_button.callback = self.close_ticket
+        self.list_button.callback = self.list_tickets
 
-        # Zamknięcie (usuniecie) kanału ticketu
-        if interaction.channel.category and interaction.channel.category.id == TICKET_CATEGORY_ID:
-            await interaction.response.send_message("✅ Zamykam ticket...", ephemeral=True)
-            await interaction.channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
+        self.add_item(self.close_button)
+        self.add_item(self.list_button)
+
+    async def close_ticket(self, interaction: discord.Interaction):
+        channel = interaction.channel
+        if channel.category and channel.category.id == TICKET_CATEGORY_ID:
+            await channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
+            await interaction.response.send_message("Ticket został zamknięty.", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ Ta komenda działa tylko w kanale ticketu.", ephemeral=True)
+            await interaction.response.send_message("Ta komenda działa tylko w kanałach ticketów.", ephemeral=True)
 
-    @discord.ui.button(label="Pokaż listę ticketów", style=discord.ButtonStyle.primary, custom_id="list_tickets")
-    async def list_tickets_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # Tylko admin z uprawnieniem manage_channels może użyć
-        if not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do zarządzania ticketami.", ephemeral=True)
-            return
-
+    async def list_tickets(self, interaction: discord.Interaction):
         guild = interaction.guild
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not category:
-            await interaction.response.send_message("❌ Kategoria ticketów nie została znaleziona.", ephemeral=True)
+            await interaction.response.send_message("Kategoria ticketów nie została znaleziona.", ephemeral=True)
             return
 
-        tickets = [ch for ch in category.channels if isinstance(ch, discord.TextChannel)]
+        tickets = [ch.name for ch in category.channels]
         if not tickets:
-            await interaction.response.send_message("✅ Brak otwartych ticketów.", ephemeral=True)
-            return
-
-        description = "\n".join(f"- {ch.name} (ID: {ch.id})" for ch in tickets)
-        embed = discord.Embed(title="Lista otwartych ticketów", description=description, color=discord.Color.blue())
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message("Brak otwartych ticketów.", ephemeral=True)
+        else:
+            tickets_list = "\n".join(tickets)
+            await interaction.response.send_message(f"Otwartych ticketów: \n{tickets_list}", ephemeral=True)
 
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def panel(ctx):
-    """Wyświetla panel admina do zarządzania ticketami."""
-    embed = discord.Embed(
-        title="Panel administracyjny ticketów",
-        description="Użyj przycisków poniżej aby zarządzać ticketami.\n\n"
-                    "- Zamknij ten ticket (usuwa kanał, działa w kanale ticketu)\n"
-                    "- Pokaż listę ticketów (lista otwartych kanałów ticketów)",
-        color=discord.Color.red()
-    )
-    view = AdminPanelView()
-    await ctx.send(embed=embed, view=view)
-
-bot.run(os.getenv('TOKEN'))
+bot.run(os.getenv("DISCORD_TOKEN"))
