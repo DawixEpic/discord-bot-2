@@ -255,7 +255,7 @@ class MenuView(View):
 
         await interaction.response.edit_message(content=None, view=self)
 
-    async def item_callback(self, interaction: discord.Interaction):
+        async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
         # Podsumowanie wyborów w treści wiadomości
@@ -267,12 +267,20 @@ class MenuView(View):
         
         await interaction.response.edit_message(content=summary, view=self)
 
-        # Logowanie do kanału logów
+        # Logowanie do kanału logów w ładnym formacie
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            await log_channel.send(
-                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
+            from datetime import datetime
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            message = (
+                f"📋 Nowy wybór ticketu\n"
+                f"Użytkownik: {interaction.user.name} ({interaction.user.id})\n"
+                f"Serwer: {self.selected_server}\n"
+                f"Tryb: {self.selected_mode}\n"
+                f"Itemy: {', '.join(self.selected_items)}\n"
+                f"Czas: {time_str}"
             )
+            await log_channel.send(message)
 
 
 bot.run(os.getenv("DISCORD_TOKEN"))
