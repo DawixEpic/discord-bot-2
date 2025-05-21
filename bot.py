@@ -226,6 +226,10 @@ class MenuView(View):
         self.add_item(self.server_select)
 
     async def server_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz używać tego menu.", ephemeral=True)
+            return
+
         self.selected_server = interaction.data['values'][0]
         self.selected_mode = None
         self.selected_items = []
@@ -245,6 +249,10 @@ class MenuView(View):
         await interaction.response.edit_message(content=None, view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz używać tego menu.", ephemeral=True)
+            return
+
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
@@ -266,6 +274,10 @@ class MenuView(View):
         await interaction.response.edit_message(content=None, view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz używać tego menu.", ephemeral=True)
+            return
+
         self.selected_items = interaction.data['values']
 
         summary = (
@@ -291,4 +303,3 @@ class MenuView(View):
 
 
 bot.run(os.getenv("DISCORD_TOKEN"))
-
