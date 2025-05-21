@@ -51,7 +51,7 @@ OFFER_DATA = {
         ("💵 50k$", "1zł"),
         ("💰 1mln$", "15zł"),
         ("🎉 EVENTOWKI:", ""),
-        ("⚔️ Excalibur", "270zł"),
+        (":Excalibur:  Excalibur", "270zł"),
         ("🌀 Totem ułaskawienia", "80zł"),
         ("🎒 Sakiewka", "20zł"),
     ],
@@ -66,7 +66,7 @@ OFFER_DATA = {
         ("🎉 EVENTÓWKI:", ""),
         ("🐰 Zajęczy miecz", "65zł"),
         ("🌀 Totem ułaskawienia", "170zł"),
-        ("🪙 Excalibur", "360zł"),
+        (":Excalibur:  Excalibur", "360zł"),
     ],
     1373267159576481842: [
         ("🛡️ Set 25", "30zł"),
