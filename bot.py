@@ -63,7 +63,7 @@ OFFER_DATA = {
         ("🗡️ Anarchiczny miecz", "3zł"),
         ("🎉 EVENTÓWKI:", ""),
         ("🐰 Zajęczy miecz", "65zł"),
-        ("🌀 Totem ułaskawienia", "170zł"),
+        ("🌀 Totem ulaskawienia", "170zł"),
         ("🪙 Excalibur", "360zł"),
     ],
     1373267159576481842: [
@@ -202,7 +202,6 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
-        # Start z wyborem serwera
         self.server_select = Select(
             placeholder="Wybierz serwer",
             options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
@@ -216,7 +215,6 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
-        # Przygotuj select trybów dla wybranego serwera
         modes = SERVER_OPTIONS.get(self.selected_server, {})
         self.mode_select = Select(
             placeholder="Wybierz tryb",
@@ -225,7 +223,6 @@ class MenuView(View):
         )
         self.mode_select.callback = self.mode_callback
 
-        # Odśwież widok: pokaż serwer i tryb
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -236,18 +233,16 @@ class MenuView(View):
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
-        # Przygotuj select itemów (multi-select) dla serwera i trybu
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
             placeholder="Wybierz item(y) (możesz zaznaczyć wiele)",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
-            max_values=len(items)  # max liczba zaznaczeń to liczba itemów
+            max_values=len(items)
         )
         self.item_select.callback = self.item_callback
 
-        # Odśwież widok: serwer, tryb i itemy
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -258,21 +253,24 @@ class MenuView(View):
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
-        # Podsumowanie wyborów w treści wiadomości
         summary = (
             f"**Serwer:** `{self.selected_server}`\n"
             f"**Tryb:** `{self.selected_mode}`\n"
             f"**Wybrane itemy:** {', '.join(self.selected_items)}"
         )
-        
+
         await interaction.response.edit_message(content=summary, view=self)
 
-        # Logowanie do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            await log_channel.send(
-                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
-            )
+            try:
+                await log_channel.send(
+                    f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
+                )
+            except Exception as e:
+                print(f"Błąd podczas wysyłania loga: {e}")
+        else:
+            print("Nie znaleziono kanału logów lub brak dostępu.")
 
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("TOKEN"))
