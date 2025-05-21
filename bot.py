@@ -41,12 +41,52 @@ SERVER_OPTIONS = {
 }
 
 OFFER_DATA = {
-    1373273108093337640: [("💸 10mld$", "1zł"), ("🗡️ Miecz 35", "40zł"), ("🛡️ Set 35", "57zł")],
-    1373270295556788285: [("💵 50k$", "1zł"), ("💰 1mln$", "15zł"), ("🎉 EVENTOWKI:", ""), ("⚔️ Excalibur", "270zł"), ("🌀 Totem ułaskawienia", "80zł"), ("🎒 Sakiewka", "20zł")],
-    1373268875407396914: [("💸 4,5k$", "1zł"), ("💸 50k$", "15zł"), ("💸 550k$", "130zł"), ("🛡️ Anarchiczny set 2", "28zł"), ("🛡️ Anarchiczny set 1", "9zł"), ("⚔️ MIECZE:", ""), ("🗡️ Anarchiczny miecz", "3zł"), ("🎉 EVENTÓWKI:", ""), ("🐰 Zajęczy miecz", "65zł"), ("🌀 Totem ułaskawienia", "170zł"), ("🪙 Excalibur", "360zł")],
-    1373267159576481842: [("🛡️ Set 25", "30zł"), ("🗡️ Miecz 25", "25zł"), ("⛏️ Kilof 25", "10zł"), ("💰 1mln$", "18zł")],
-    1373266589310517338: [("🪽 Elytra", "12zł"), ("👟 Buty flasha", "5zł"), ("🗡️ Miecz 6", "3zł"), ("💵 1k$", "1zł"), ("📦 Shulker s2", "7zł"), ("📦 Shulker totemów", "6zł")],
-    1374380939970347019: [("💸 15k$", "1zł"), ("🌟 Budda", "30zł"), ("💖 Love swap", "100zł"), ("🐉 Klata meduzy", "140zł")]
+    1373273108093337640: [
+        ("💸 10mld$", "1zł"),
+        ("🗡️ Miecz 35", "40zł"),
+        ("🛡️ Set 35", "57zł"),
+    ],
+    1373270295556788285: [
+        ("💵 50k$", "1zł"),
+        ("💰 1mln$", "15zł"),
+        ("🎉 EVENTOWKI:", ""),
+        ("⚔️ Excalibur", "270zł"),
+        ("🌀 Totem ułaskawienia", "80zł"),
+        ("🎒 Sakiewka", "20zł"),
+    ],
+    1373268875407396914: [
+        ("💸 4,5k$", "1zł"),
+        ("💸 50k$", "15zł"),
+        ("💸 550k$", "130zł"),
+        ("🛡️ Anarchiczny set 2", "28zł"),
+        ("🛡️ Anarchiczny set 1", "9zł"),
+        ("⚔️ MIECZE:", ""),
+        ("🗡️ Anarchiczny miecz", "3zł"),
+        ("🎉 EVENTÓWKI:", ""),
+        ("🐰 Zajęczy miecz", "65zł"),
+        ("🌀 Totem ułaskawienia", "170zł"),
+        ("🪙 Excalibur", "360zł"),
+    ],
+    1373267159576481842: [
+        ("🛡️ Set 25", "30zł"),
+        ("🗡️ Miecz 25", "25zł"),
+        ("⛏️ Kilof 25", "10zł"),
+        ("💰 1mln$", "18zł"),
+    ],
+    1373266589310517338: [
+        ("🪽 Elytra", "12zł"),
+        ("👟 Buty flasha", "5zł"),
+        ("🗡️ Miecz 6", "3zł"),
+        ("💵 1k$", "1zł"),
+        ("📦 Shulker s2", "7zł"),
+        ("📦 Shulker totemów", "6zł"),
+    ],
+    1374380939970347019: [
+        ("💸 15k$", "1zł"),
+        ("🌟 Budda", "30zł"),
+        ("💖 Love swap", "100zł"),
+        ("🐉 Klata meduzy", "140zł"),
+    ],
 }
 
 
@@ -58,7 +98,11 @@ async def on_ready():
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def weryfikacja(ctx):
-    embed = discord.Embed(title="✅ Weryfikacja", description="Kliknij ✅ aby się zweryfikować i dostać dostęp.", color=discord.Color.green())
+    embed = discord.Embed(
+        title="✅ Weryfikacja",
+        description="Kliknij ✅ aby się zweryfikować i dostać dostęp.",
+        color=discord.Color.green()
+    )
     msg = await ctx.send(embed=embed)
     await msg.add_reaction("✅")
     global verification_message_id
@@ -69,7 +113,11 @@ async def weryfikacja(ctx):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket(ctx):
-    embed = discord.Embed(title="🎟️ Napisz co chcesz kupić", description="Kliknij 🎟️ aby otworzyć prywatny ticket z wyborem opcji.", color=discord.Color.blue())
+    embed = discord.Embed(
+        title="🎟️ Napisz co chcesz kupić",
+        description="Kliknij 🎟️ aby otworzyć prywatny ticket z wyborem opcji.",
+        color=discord.Color.blue()
+    )
     msg = await ctx.send(embed=embed)
     await msg.add_reaction("🎟️")
     global ticket_message_id
@@ -125,10 +173,20 @@ async def on_raw_reaction_add(payload):
             channel = guild.get_channel(payload.channel_id)
             await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
+        # Reset reakcji ✅
+        channel = guild.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        await message.clear_reaction("✅")
+
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
             return
+
+        # Reset reakcji 🎟️
+        channel = guild.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        await message.clear_reaction("🎟️")
 
         channel_name = f"ticket-{payload.member.name}".lower()
         existing = discord.utils.get(guild.channels, name=channel_name)
@@ -144,6 +202,7 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
+        # Automatyczne zamknięcie po 1h
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
@@ -232,3 +291,4 @@ class MenuView(View):
 
 
 bot.run(os.getenv("DISCORD_TOKEN"))
+
