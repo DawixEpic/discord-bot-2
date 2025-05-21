@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
 import os
-import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -42,54 +41,58 @@ SERVER_OPTIONS = {
 
 OFFER_DATA = {
     1373273108093337640: [
-        ("10MLD", "1 ZŁ"),
-        ("MIECZ35", "40 ZŁ"),
-        ("SET35", "57 ZŁ"),
+        ("💸 10mld$", "1zł"),
+        ("🗡️ Miecz 35", "40zł"),
+        ("🛡️ Set 35", "57zł"),
     ],
     1373270295556788285: [
-        ("1 ZŁ", "50 K$"),
-        ("15 ZŁ", "1 MLN"),
-        ("EVENTOWKI", ""),
-        ("EXCALIBUR 45 +44% +1000 KILLI", "150 ZŁ"),
-        ("TOTEM UŁASKAWIENIA", "80 ZŁ"),
-        ("SAKIEWKA", "20 ZŁ"),
+        ("💵 50k$", "1zł"),
+        ("💰 1mln$", "15zł"),
+        ("🎉 EVENTOWKI:", ""),
+        ("⚔️ Excalibur", "270zł"),
+        ("🌀 Totem ułaskawienia", "80zł"),
+        ("🎒 Sakiewka", "20zł"),
     ],
     1373268875407396914: [
-        ("1 ZŁ", "4,5 K$"),
-        ("10 ZŁ", "50 K$"),
-        ("100 ZŁ", "550 K$"),
-        ("21 ZŁ", "SET ANA 2"),
-        ("8 ZŁ", "SET ANA 1"),
-        ("MIECZE:", ""),
-        ("ANA 51%", "120 ZŁ"),
-        ("ANA 40%", "10 ZŁ"),
-        ("ANA 44%", "60 ZŁ"),
-        ("EVENTOWKI", ""),
-        ("ZAJĘCZY MIECZ", "65 ZŁ"),
-        ("TOTEM UŁASKAWIENIA", "170 ZŁ"),
-        ("EXCALIBUR 39%", "185 ZŁ"),
+        ("💸 4,5k$", "1zł"),
+        ("💸 50k$", "15zł"),
+        ("💸 550k$", "130zł"),
+        ("🛡️ Anarchiczny set 2", "28zł"),
+        ("🛡️ Anarchiczny set 1", "9zł"),
+        ("⚔️ MIECZE:", ""),
+        ("🗡️ Anarchiczny miecz", "3zł"),
+        ("🎉 EVENTÓWKI:", ""),
+        ("🐰 Zajęczy miecz", "65zł"),
+        ("🌀 Totem ułaskawienia", "170zł"),
+        ("🪙 Excalibur", "360zł"),
     ],
     1373267159576481842: [
-        ("SET25", "20 ZŁ"),
-        ("MIECZ25", "15 ZŁ"),
-        ("KILOF25", "5 ZŁ"),
-        ("1 MLN", "15 ZŁ"),
+        ("🛡️ Set 25", "30zł"),
+        ("🗡️ Miecz 25", "25zł"),
+        ("⛏️ Kilof 25", "10zł"),
+        ("💰 1mln$", "18zł"),
     ],
     1373266589310517338: [
-        ("ELYTRA", "8 ZŁ"),
-        ("BUTY FLASHA", "3 ZŁ"),
-        ("MIECZ6", "2 ZŁ"),
-        ("1K", "ZŁ"),
-        ("SHULKER S2", "2 ZŁ"),
-        ("SHULKER TOTEMÓW", "1 ZŁ"),
-        ("SPOSÓB NA KOPIOWANIE PRZEDMIOTÓW", "70 ZŁ"),
-        ("MOŻLIWOŚĆ ZAKUPU OD 10 ZŁ", ""),
+        ("🪽 Elytra", "12zł"),
+        ("👟 Buty flasha", "5zł"),
+        ("🗡️ Miecz 6", "3zł"),
+        ("💵 1k$", "1zł"),
+        ("📦 Shulker s2", "7zł"),
+        ("📦 Shulker totemów", "6zł"),
+    ],
+    1374380939970347019: [
+        ("💸 15k$", "1zł"),
+        ("🌟 Budda", "30zł"),
+        ("💖 Love swap", "100zł"),
+        ("🐉 Klata meduzy", "140zł"),
     ],
 }
+
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
+
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -103,6 +106,7 @@ async def weryfikacja(ctx):
     verification_message_id = msg.id
     await ctx.send("✅ Wiadomość weryfikacyjna została wysłana.")
 
+
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket(ctx):
@@ -114,6 +118,7 @@ async def ticket(ctx):
     global ticket_message_id
     ticket_message_id = msg.id
     await ctx.send("✅ Wiadomość ticket została wysłana.")
+
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -144,9 +149,10 @@ async def oferta(ctx):
 
             await channel.send(embed=embed, view=view)
         except Exception as e:
-            print(f"Nie udało się wysłać oferty na kanał {channel_id}: {e}")
+            print(f"❌ Błąd podczas wysyłania oferty na kanał {channel_id}: {e}")
 
-    await ctx.send("✅ Oferta została wysłana na wszystkie kanały.")
+    await ctx.send("✅ Oferty zostały wysłane na wszystkie kanały.")
+
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -181,10 +187,11 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        # Automatyczne zamykanie po 1h
+        # Automatyczne zamknięcie po 1h
         await asyncio.sleep(3600)
-        if ticket_channel:
+        if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -233,9 +240,17 @@ class MenuView(View):
 
     async def item_callback(self, interaction: discord.Interaction):
         selected_item = interaction.data['values'][0]
-        await interaction.response.send_message(f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Item: {selected_item}", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Wybrałeś: **Serwer:** `{self.selected_server}`, **Tryb:** `{self.selected_mode}`, **Item:** `{selected_item}`",
+            ephemeral=True
+        )
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            await log_channel.send(f"{interaction.user} wybrał: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Item: {selected_item}")
+            await log_channel.send(
+                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{selected_item}**"
+            )
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+
+# Bezpieczne uruchomienie bota
+if __name__ == "__main__":
+    bot.run(os.getenv("DISCORD_TOKEN"))
