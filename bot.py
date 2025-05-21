@@ -188,9 +188,14 @@ async def on_raw_reaction_add(payload):
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
         # Automatyczne zamknięcie po 1h
-        await asyncio.sleep(3600)
-        if ticket_channel and ticket_channel in guild.text_channels:
-            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+        async def auto_close():
+            await asyncio.sleep(3600)
+            try:
+                await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+            except:
+                pass
+
+        bot.loop.create_task(auto_close())
 
 
 class MenuView(View):
@@ -209,6 +214,11 @@ class MenuView(View):
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
 
+        # Dodaj przycisk zamknięcia ticketu
+        self.close_button = Button(label="🔒 Zamknij ticket", style=discord.ButtonStyle.danger)
+        self.close_button.callback = self.close_callback
+        self.add_item(self.close_button)
+
     async def server_callback(self, interaction: discord.Interaction):
         self.selected_server = interaction.data['values'][0]
         modes = SERVER_OPTIONS.get(self.selected_server, {})
@@ -221,6 +231,7 @@ class MenuView(View):
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
+        self.add_item(self.close_button)
         await interaction.response.edit_message(view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
@@ -236,6 +247,7 @@ class MenuView(View):
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
+        self.add_item(self.close_button)
         await interaction.response.edit_message(view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
@@ -249,6 +261,16 @@ class MenuView(View):
             await log_channel.send(
                 f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{selected_item}**"
             )
+
+    async def close_callback(self, interaction: discord.Interaction):
+        # Sprawdź czy klikający jest właścicielem ticketu
+        if interaction.user != self.member:
+            await interaction.response.send_message("❌ Tylko właściciel ticketu może go zamknąć.", ephemeral=True)
+            return
+
+        await interaction.response.send_message("🔒 Ticket zostanie zamknięty za chwilę...", ephemeral=True)
+        await asyncio.sleep(2)
+        await self.channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
 
 
 # Bezpieczne uruchomienie bota
