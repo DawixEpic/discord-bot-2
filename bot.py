@@ -188,14 +188,9 @@ async def on_raw_reaction_add(payload):
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
         # Automatyczne zamknięcie po 1h
-        async def auto_close():
-            await asyncio.sleep(3600)
-            try:
-                await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
-            except:
-                pass
-
-        bot.loop.create_task(auto_close())
+        await asyncio.sleep(3600)
+        if ticket_channel and ticket_channel in guild.text_channels:
+            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
 
 
 class MenuView(View):
@@ -205,7 +200,9 @@ class MenuView(View):
         self.channel = channel
         self.selected_server = None
         self.selected_mode = None
+        self.selected_items = []
 
+        # Start z wyborem serwera
         self.server_select = Select(
             placeholder="Wybierz serwer",
             options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
@@ -214,13 +211,12 @@ class MenuView(View):
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
 
-        # Dodaj przycisk zamknięcia ticketu
-        self.close_button = Button(label="🔒 Zamknij ticket", style=discord.ButtonStyle.danger)
-        self.close_button.callback = self.close_callback
-        self.add_item(self.close_button)
-
     async def server_callback(self, interaction: discord.Interaction):
         self.selected_server = interaction.data['values'][0]
+        self.selected_mode = None
+        self.selected_items = []
+
+        # Przygotuj select trybów dla wybranego serwera
         modes = SERVER_OPTIONS.get(self.selected_server, {})
         self.mode_select = Select(
             placeholder="Wybierz tryb",
@@ -228,51 +224,55 @@ class MenuView(View):
             custom_id="mode_select"
         )
         self.mode_select.callback = self.mode_callback
+
+        # Odśwież widok: pokaż serwer i tryb
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
-        self.add_item(self.close_button)
-        await interaction.response.edit_message(view=self)
+
+        await interaction.response.edit_message(content=None, view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
         self.selected_mode = interaction.data['values'][0]
+        self.selected_items = []
+
+        # Przygotuj select itemów (multi-select) dla serwera i trybu
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
-            placeholder="Wybierz item",
+            placeholder="Wybierz item(y) (możesz zaznaczyć wiele)",
             options=[discord.SelectOption(label=item) for item in items],
-            custom_id="item_select"
+            custom_id="item_select",
+            min_values=1,
+            max_values=len(items)  # max liczba zaznaczeń to liczba itemów
         )
         self.item_select.callback = self.item_callback
+
+        # Odśwież widok: serwer, tryb i itemy
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
-        self.add_item(self.close_button)
-        await interaction.response.edit_message(view=self)
+
+        await interaction.response.edit_message(content=None, view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
-        selected_item = interaction.data['values'][0]
-        await interaction.response.send_message(
-            f"✅ Wybrałeś: **Serwer:** `{self.selected_server}`, **Tryb:** `{self.selected_mode}`, **Item:** `{selected_item}`",
-            ephemeral=True
+        self.selected_items = interaction.data['values']
+
+        # Podsumowanie wyborów w treści wiadomości
+        summary = (
+            f"**Serwer:** `{self.selected_server}`\n"
+            f"**Tryb:** `{self.selected_mode}`\n"
+            f"**Wybrane itemy:** {', '.join(self.selected_items)}"
         )
+        
+        await interaction.response.edit_message(content=summary, view=self)
+
+        # Logowanie do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             await log_channel.send(
-                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{selected_item}**"
+                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
             )
 
-    async def close_callback(self, interaction: discord.Interaction):
-        # Sprawdź czy klikający jest właścicielem ticketu
-        if interaction.user != self.member:
-            await interaction.response.send_message("❌ Tylko właściciel ticketu może go zamknąć.", ephemeral=True)
-            return
 
-        await interaction.response.send_message("🔒 Ticket zostanie zamknięty za chwilę...", ephemeral=True)
-        await asyncio.sleep(2)
-        await self.channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
-
-
-# Bezpieczne uruchomienie bota
-if __name__ == "__main__":
-    bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
