@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -13,38 +14,30 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 123456789012345678
-TICKET_CHANNEL_ID = 1373305137228939416
+LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID swojego kanału logów
+TICKET_CHANNEL_ID = 1373305137228939416  # <-- Wstaw tutaj ID kanału ticketów
 
 verification_message_id = None
 ticket_message_id = None
 
 SERVER_OPTIONS = {
-    "𝓑𝓪𝓲𝓮𝓳𝓸𝓲𝓮𝓻": {
-        "𝓑𝓪𝓵𝓮𝓲": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
-        "𝓑𝓮𝓹𝓳𝓵": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
+    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
+        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "10k$"]
     },
-    "𝒐𝒶𝓂𝒶𝓁𝓅𝒶": {
-        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
-        "𝓑𝓮𝓹𝓳𝓵": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
+    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Set anarchczny 2", "Set anarchiczny 1", "Miecze anarchcznye", "Excalibur", "Totem ułskawienia", "4,5k$", "50k$", "550k$"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Excalibur", "Totem ułskawienia", "Sakiewka", "50k$", "1mln"]
     },
-    "𝒑𝓆𝓏𝓀": {
-        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["nie dostępne", "nie dostępne", "nie dostępne"],
-        "𝓑𝓮𝓹𝓳𝓵": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
+    "𝐑𝐀𝐏𝐘": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 35", "Miecz 35", "Kilof 35", "10mld$", "50mld$", "100mld$"]
     },
-    "𝓏𝓈𝓖𝓆": {
-        "𝒒𝓇𝓎𝓛𝓂𝓅𝓁": ["Budda", "Love swap", "Klata meduzy"],
-        "𝓑𝓮𝓹𝓳𝓵": ["nie dostępne", "nie dostępne", "nie dostępne"]
+    "𝐏𝐘𝐊𝐌𝐂": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Budda", "Love swap", "Klata meduzy"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
-
-class TicketData:
-    def __init__(self):
-        self.server = None
-        self.mode = None
-        self.items = []
-
-user_ticket_data = {}
 
 OFFER_DATA = {
     1373273108093337640: [
@@ -70,7 +63,7 @@ OFFER_DATA = {
         ("🗡️ Anarchiczny miecz", "3zł"),
         ("🎉 EVENTÓWKI:", ""),
         ("🐰 Zajęczy miecz", "65zł"),
-        ("🌀 Totem ulaskawienia", "170zł"),
+        ("🌀 Totem ułaskawienia", "170zł"),
         ("🪙 Excalibur", "360zł"),
     ],
     1373267159576481842: [
@@ -209,6 +202,7 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
+        # Start z wyborem serwera
         self.server_select = Select(
             placeholder="Wybierz serwer",
             options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
@@ -222,6 +216,7 @@ class MenuView(View):
         self.selected_mode = None
         self.selected_items = []
 
+        # Przygotuj select trybów dla wybranego serwera
         modes = SERVER_OPTIONS.get(self.selected_server, {})
         self.mode_select = Select(
             placeholder="Wybierz tryb",
@@ -230,6 +225,7 @@ class MenuView(View):
         )
         self.mode_select.callback = self.mode_callback
 
+        # Odśwież widok: pokaż serwer i tryb
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -240,16 +236,18 @@ class MenuView(View):
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
+        # Przygotuj select itemów (multi-select) dla serwera i trybu
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
             placeholder="Wybierz item(y) (możesz zaznaczyć wiele)",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
-            max_values=len(items)
+            max_values=len(items)  # max liczba zaznaczeń to liczba itemów
         )
         self.item_select.callback = self.item_callback
 
+        # Odśwież widok: serwer, tryb i itemy
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
@@ -260,24 +258,21 @@ class MenuView(View):
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
+        # Podsumowanie wyborów w treści wiadomości
         summary = (
             f"**Serwer:** `{self.selected_server}`\n"
             f"**Tryb:** `{self.selected_mode}`\n"
             f"**Wybrane itemy:** {', '.join(self.selected_items)}"
         )
-
+        
         await interaction.response.edit_message(content=summary, view=self)
 
+        # Logowanie do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            try:
-                await log_channel.send(
-                    f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
-                )
-            except Exception as e:
-                print(f"Błąd podczas wysyłania loga: {e}")
-        else:
-            print("Nie znaleziono kanału logów lub brak dostępu.")
+            await log_channel.send(
+                f"📩 {interaction.user.mention} wybrał: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**"
+            )
 
 
-bot.run(os.getenv("TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
