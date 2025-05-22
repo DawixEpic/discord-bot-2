@@ -45,19 +45,29 @@ SERVER_OPTIONS = {
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
 
-    channel = bot.get_channel(ADMIN_PANEL_CHANNEL_ID)
-    if channel:
-        embed = discord.Embed(
-            title="Panel administracyjny ticketów",
-            description="Użyj przycisków poniżej aby zarządzać ticketami.\n\n"
-                        "- Zamknij ten ticket (usuwa kanał, działa w kanale ticketu)\n"
-                        "- Pokaż listę ticketów (lista otwartych kanałów ticketów)",
-            color=discord.Color.red()
-        )
-        view = AdminPanelView()
-        await channel.send(embed=embed, view=view)
-    else:
-        print("❌ Nie znaleziono kanału do wysłania panelu admina.")
+@bot.command()
+async def ticket(ctx):
+    global ticket_message_id
+    embed = discord.Embed(
+        title="🎟️ System ticketów",
+        description="Reaguj na 🎟️ aby otworzyć ticket i wybrać co chcesz kupić.",
+        color=discord.Color.green()
+    )
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("🎟️")
+    ticket_message_id = msg.id
+
+@bot.command()
+async def weryfikacja(ctx):
+    global verification_message_id
+    embed = discord.Embed(
+        title="✅ Weryfikacja",
+        description="Kliknij ✅ aby się zweryfikować i uzyskać dostęp do serwera.",
+        color=discord.Color.blue()
+    )
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("✅")
+    verification_message_id = msg.id
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -138,7 +148,7 @@ class MenuView(View):
 
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
-            placeholder="Wybierz item(y) (możesz zaznaczyć wiele)",
+            placeholder="Wybierz item(y)",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
@@ -155,14 +165,11 @@ class MenuView(View):
 
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
-
-        # Wyślij wiadomość prywatną
         await interaction.response.send_message(
             f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
             ephemeral=True
         )
 
-        # Loguj wybór do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -175,39 +182,5 @@ class MenuView(View):
                 timestamp=datetime.utcnow()
             )
             await log_channel.send(embed=embed)
-
-class AdminPanelView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.close_button = Button(label="Zamknij ten ticket", style=discord.ButtonStyle.danger)
-        self.list_button = Button(label="Pokaż listę ticketów", style=discord.ButtonStyle.secondary)
-
-        self.close_button.callback = self.close_ticket
-        self.list_button.callback = self.list_tickets
-
-        self.add_item(self.close_button)
-        self.add_item(self.list_button)
-
-    async def close_ticket(self, interaction: discord.Interaction):
-        channel = interaction.channel
-        if channel.category and channel.category.id == TICKET_CATEGORY_ID:
-            await channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
-            await interaction.response.send_message("Ticket został zamknięty.", ephemeral=True)
-        else:
-            await interaction.response.send_message("Ta komenda działa tylko w kanałach ticketów.", ephemeral=True)
-
-    async def list_tickets(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        category = guild.get_channel(TICKET_CATEGORY_ID)
-        if not category:
-            await interaction.response.send_message("Kategoria ticketów nie została znaleziona.", ephemeral=True)
-            return
-
-        tickets = [ch.name for ch in category.channels]
-        if not tickets:
-            await interaction.response.send_message("Brak otwartych ticketów.", ephemeral=True)
-        else:
-            tickets_list = "\n".join(tickets)
-            await interaction.response.send_message(f"Otwartych ticketów:\n{tickets_list}", ephemeral=True)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
