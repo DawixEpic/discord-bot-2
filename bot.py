@@ -1,37 +1,51 @@
-Microsoft Windows [Version 10.0.26100.4061]
-(c) Microsoft Corporation. Wszelkie prawa zastrzeżone.
+import discord
+from discord.ext import commands
+from discord.ui import View, Select
+import os
 
-C:\Users\dawid>pip show discord.py
-Name: discord.py
-Version: 2.5.2
-Summary: A Python wrapper for the Discord API
-Home-page:
-Author: Rapptz
-Author-email:
-License: The MIT License (MIT)
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-Copyright (c) 2015-present Rapptz
+TICKET_CATEGORY_ID = 1373277957446959135  # Zmień na swoje
+SUPPORT_ROLE_ID = 1373275898375176232     # Zmień na swoje
+LOG_CHANNEL_ID = 1374479815914291240      # Zmień na swoje
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
+SERVER_OPTIONS = {
+    "Serwer A": {
+        "Tryb 1": ["Item 1", "Item 2"],
+        "Tryb 2": ["Item 3"]
+    },
+    "Serwer B": {
+        "Tryb 3": ["Item 4", "Item 5"]
+    }
+}
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+class MenuView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
+        self.server_select = Select(
+            placeholder="Wybierz serwer",
+            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS]
+        )
+        self.server_select.callback = self.server_callback
+        self.add_item(self.server_select)
 
-Location: C:\Users\dawid\AppData\Local\Programs\Python\Python313\Lib\site-packages
-Requires: aiohttp, audioop-lts
-Required-by:
+    async def server_callback(self, interaction: discord.Interaction):
+        selected_server = self.server_select.values[0]
+        await interaction.response.send_message(f"Wybrano serwer: {selected_server}", ephemeral=True)
 
-C:\Users\dawid>
+@bot.command()
+async def test(ctx):
+    category = discord.utils.get(ctx.guild.categories, id=TICKET_CATEGORY_ID)
+
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        ctx.author: discord.PermissionOverwrite(read_messages=True),
+        ctx.guild.get_role(SUPPORT_ROLE_ID): discord.PermissionOverwrite(read_messages=True),
+    }
+
+    channel = await ctx.guild.create_text_channel(f"ticket-{ctx.author.name}", category=category, overwrites=overwrites)
+    await channel.send("🎫 Ticket utworzony! Wybierz serwer:", view=MenuView())
+
+bot.run("TWÓJ_TOKEN_BOTA")
