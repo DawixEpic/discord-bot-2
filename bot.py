@@ -17,7 +17,7 @@ ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 TICKET_CHANNEL_ID = 1373305137228939416
-ADMIN_PANEL_CHANNEL_ID = 1374781085895884820  # tutaj id kanału do wysyłania panelu admina
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
 
 verification_message_id = None
 ticket_message_id = None
@@ -41,56 +41,6 @@ SERVER_OPTIONS = {
     }
 }
 
-OFFER_DATA = {
-    1373273108093337640: [
-        ("💸 10mld$", "1zł"),
-        ("<:Miecz_emoji:1374791139462352906> Miecz 35", "40zł"),
-        ("<:Klata_emoji:1374793644246306866> Set 35", "57zł"),
-    ],
-    1373270295556788285: [
-        ("💵 50k$", "1zł"),
-        ("💰 1mln$", "15zł"),
-        ("🎉 EVENTOWKI:", ""),
-        ("<:Excalibur_emoji:1374785662191927416> Excalibur", "270zł"),
-        ("<:Totem_emoji:1374788635211206757> Totem ułaskawienia", "80zł"),
-        ("<:Sakiewka_emoji:1374799829120716892> Sakiewka", "20zł"),
-    ],
-    1373268875407396914: [
-        ("💸 4,5k$", "1zł"),
-        ("💸 50k$", "15zł"),
-        ("💸 550k$", "130zł"),
-        ("<:ana2_emoji:1374799017359314944> Anarchiczny set 2", "28zł"),
-        ("<:Klata_emoji:1374793644246306866> Anarchiczny set 1", "9zł"),
-        ("⚔️ MIECZE:", ""),
-        ("13732702955567882 Anarchiczny miecz", "3zł"),
-        ("🎉 EVENTÓWKI:", ""),
-        ("🐰 Zajęczy miecz", "65zł"),
-        ("<:Totem_emoji:1374788635211206757 Totem ułaskawienia", "170zł"),
-        ("<:Excalibur_emoji:1374785662191927416> Excalibur", "360zł"),
-    ],
-    1373267159576481842: [
-        ("<:Klata_emoji:1374793644246306866> Set 25", "30zł"),
-        ("<:Miecz_emoji:1374791139462352906> Miecz 25", "25zł"),
-        ("<:Kilof_emoji:1374795407493959751> Kilof 25", "10zł"),
-        ("💵 1mln$", "18zł"),
-    ],
-    1373266589310517338: [
-        ("<:Elytra_enoji:1374797373406187580> Elytra", "12zł"),
-        ("<:Buty_enoji:1374796797222064230> Buty flasha", "5zł"),
-        ("<:Miecz_emoji:1374791139462352906> Miecz 6", "3zł"),
-        ("💵 1k$", "1zł"),
-        ("<:Shulker_enoji:1374795916531335271> Shulker s2", "7zł"),
-        ("<:Shulker_enoji:1374795916531335271> Shulker totemów", "6zł"),
-    ],
-    1374380939970347019: [
-        ("💸 15k$", "1zł"),
-        ("🌟 Buddha", "30zł"),
-        ("💖 Love swap", "100zł"),
-        ("🐉 Klata meduzy", "140zł"),
-    ],
-}
-
-
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
@@ -109,71 +59,6 @@ async def on_ready():
     else:
         print("❌ Nie znaleziono kanału do wysłania panelu admina.")
 
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def weryfikacja(ctx):
-    embed = discord.Embed(
-        title="✅ Weryfikacja",
-        description="Kliknij ✅ aby się zweryfikować i dostać dostęp.",
-        color=discord.Color.green()
-    )
-    msg = await ctx.send(embed=embed)
-    await msg.add_reaction("✅")
-    global verification_message_id
-    verification_message_id = msg.id
-    await ctx.send("✅ Wiadomość weryfikacyjna została wysłana.")
-
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def ticket(ctx):
-    embed = discord.Embed(
-        title="🎟️ Napisz co chcesz kupić",
-        description="Kliknij 🎟️ aby otworzyć prywatny ticket z wyborem opcji.",
-        color=discord.Color.blue()
-    )
-    msg = await ctx.send(embed=embed)
-    await msg.add_reaction("🎟️")
-    global ticket_message_id
-    ticket_message_id = msg.id
-    await ctx.send("✅ Wiadomość ticket została wysłana.")
-
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def oferta(ctx):
-    for channel_id, items in OFFER_DATA.items():
-        try:
-            channel = await bot.fetch_channel(channel_id)
-            description = ""
-            for name, price in items:
-                if price:
-                    description += f"**{name}** — *Cena:* `{price}`\n"
-                else:
-                    description += f"**{name}**\n"
-
-            embed = discord.Embed(
-                title="🛒 Oferta itemów na sprzedaż",
-                description=description + "\n**Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!**",
-                color=discord.Color.blurple()
-            )
-
-            button = Button(
-                label="📝 Otwórz Ticket",
-                style=discord.ButtonStyle.link,
-                url=f"https://discord.com/channels/{ctx.guild.id}/{TICKET_CHANNEL_ID}"
-            )
-            view = View()
-            view.add_item(button)
-
-            await channel.send(embed=embed, view=view)
-        except Exception as e:
-            print(f"❌ Błąd podczas wysyłania oferty na kanał {channel_id}: {e}")
-
-    await ctx.send("✅ Oferty zostały wysłane na wszystkie kanały.")
-
-
 @bot.event
 async def on_raw_reaction_add(payload):
     if payload.member is None or payload.member.bot:
@@ -188,14 +73,10 @@ async def on_raw_reaction_add(payload):
             channel = guild.get_channel(payload.channel_id)
             await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
-        # **Usunięto clear_reaction, żeby reakcja nie znikała**
-
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
             return
-
-        # **Usunięto clear_reaction, żeby reakcja nie znikała**
 
         channel_name = f"ticket-{payload.member.name}".lower()
         existing = discord.utils.get(guild.channels, name=channel_name)
@@ -211,11 +92,9 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        # Automatyczne zamknięcie po 1h
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
-
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -276,8 +155,26 @@ class MenuView(View):
 
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
-        await interaction.response.send_message(f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}", ephemeral=True)
 
+        # Wyślij wiadomość prywatną
+        await interaction.response.send_message(
+            f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
+            ephemeral=True
+        )
+
+        # Loguj wybór do kanału logów
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            embed = discord.Embed(
+                title="📥 Nowy wybór w tickecie",
+                description=f"**Użytkownik:** {interaction.user.mention}\n"
+                            f"**Serwer:** {self.selected_server}\n"
+                            f"**Tryb:** {self.selected_mode}\n"
+                            f"**Itemy:** {', '.join(self.selected_items)}",
+                color=discord.Color.gold(),
+                timestamp=datetime.utcnow()
+            )
+            await log_channel.send(embed=embed)
 
 class AdminPanelView(View):
     def __init__(self):
@@ -311,7 +208,6 @@ class AdminPanelView(View):
             await interaction.response.send_message("Brak otwartych ticketów.", ephemeral=True)
         else:
             tickets_list = "\n".join(tickets)
-            await interaction.response.send_message(f"Otwartych ticketów: \n{tickets_list}", ephemeral=True)
-
+            await interaction.response.send_message(f"Otwartych ticketów:\n{tickets_list}", ephemeral=True)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
