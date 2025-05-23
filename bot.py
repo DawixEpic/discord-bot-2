@@ -1,26 +1,19 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Select, Button
-import asyncio
-import os
+from discord.ui import View, Button, Select
 from datetime import datetime
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.guilds = True
-intents.reactions = True
 intents.members = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-ROLE_ID = 1373275307150278686
-TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240
-TICKET_CHANNEL_ID = 1373305137228939416
-ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
-
-verification_message_id = None
-ticket_message_id = None
+# Twoje ID i konfiguracje
+ROLE_ID = 1373275307150278686           # rola do weryfikacji
+TICKET_CATEGORY_ID = 1373277957446959135  # kategoria ticketów
+LOG_CHANNEL_ID = 1374479815914291240       # kanał logów
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -45,155 +38,144 @@ SERVER_OPTIONS = {
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
 
+# Komenda do wysłania przycisków weryfikacji i ticketu
 @bot.command()
-async def ticket(ctx):
-    global ticket_message_id
-    embed = discord.Embed(
-        title="🎟️ System ticketów",
-        description="Reaguj na 🎟️ aby otworzyć ticket i wybrać co chcesz kupić.",
-        color=discord.Color.green()
-    )
-    msg = await ctx.send(embed=embed)
-    await msg.add_reaction("🎟️")
-    ticket_message_id = msg.id
+async def start(ctx):
+    view = MainView()
+    await ctx.send("Kliknij przyciski, aby się zweryfikować lub otworzyć ticket:", view=view)
 
-@bot.command()
-async def weryfikacja(ctx):
-    global verification_message_id
-    embed = discord.Embed(
-        title="✅ Weryfikacja",
-        description="Kliknij ✅ aby się zweryfikować i uzyskać dostęp do serwera.",
-        color=discord.Color.blue()
-    )
-    msg = await ctx.send(embed=embed)
-    await msg.add_reaction("✅")
-    verification_message_id = msg.id
+class MainView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(VerifyButton())
+        self.add_item(TicketButton())
 
-@bot.event
-async def on_raw_reaction_add(payload):
-    # Ignoruj boty lub brak członka
-    if payload.member is None or payload.member.bot:
-        return
+class VerifyButton(Button):
+    def __init__(self):
+        super().__init__(label="Weryfikacja ✅", style=discord.ButtonStyle.green, custom_id="verify_button")
 
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        return
+    async def callback(self, interaction: discord.Interaction):
+        role = interaction.guild.get_role(ROLE_ID)
+        if role in interaction.user.roles:
+            await interaction.response.send_message("Jesteś już zweryfikowany!", ephemeral=True)
+        else:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message("Weryfikacja przebiegła pomyślnie! Masz teraz dostęp do serwera.", ephemeral=True)
 
-    if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
-        role = guild.get_role(ROLE_ID)
-        if role:
-            await payload.member.add_roles(role)
-            channel = guild.get_channel(payload.channel_id)
-            if channel:
-                await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
+class TicketButton(Button):
+    def __init__(self):
+        super().__init__(label="Otwórz ticket 🎟️", style=discord.ButtonStyle.blurple, custom_id="ticket_button")
 
-    elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
+    async def callback(self, interaction: discord.Interaction):
+        # Sprawdź, czy już ticket istnieje
+        guild = interaction.guild
         category = guild.get_channel(TICKET_CATEGORY_ID)
-        if not isinstance(category, discord.CategoryChannel):
-            return
-
-        channel_name = f"ticket-{payload.member.name}".lower()
-        existing = discord.utils.get(guild.channels, name=channel_name)
+        channel_name = f"ticket-{interaction.user.name}".lower()
+        existing = discord.utils.get(guild.text_channels, name=channel_name)
         if existing:
+            await interaction.response.send_message(f"Masz już otwarty ticket: {existing.mention}", ephemeral=True)
             return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            payload.member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
+        await interaction.response.send_message(f"Ticket utworzony: {ticket_channel.mention}", ephemeral=True)
+        await ticket_channel.send(f"{interaction.user.mention}, wybierz serwer, tryb i itemy w menu poniżej.", view=TicketMenuView(interaction.user))
 
-        async def auto_close():
-            await asyncio.sleep(3600)
-            if ticket_channel and ticket_channel in guild.text_channels:
-                await archive_and_close(ticket_channel, f"Automatyczne zamknięcie ticketu po 1 godzinie")
-        bot.loop.create_task(auto_close())
-
-class MenuView(View):
-    def __init__(self, member, channel):
+class TicketMenuView(View):
+    def __init__(self, member):
         super().__init__(timeout=None)
         self.member = member
-        self.channel = channel
         self.selected_server = None
         self.selected_mode = None
         self.selected_items = []
 
+        # Select do serwera
         self.server_select = Select(
             placeholder="Wybierz serwer",
-            options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
+            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()],
             custom_id="server_select"
         )
-        self.server_select.callback = self.server_callback
+        self.server_select.callback = self.server_select_callback
         self.add_item(self.server_select)
 
-        self.close_button = Button(label="Zamknij ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
-        self.close_button.callback = self.close_ticket_callback
-        self.add_item(self.close_button)
+        # Przyciski i inne selecty będą dodawane dynamicznie
 
-    async def server_callback(self, interaction: discord.Interaction):
+    async def server_select_callback(self, interaction: discord.Interaction):
         if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            await interaction.response.send_message("To nie jest twój ticket!", ephemeral=True)
             return
 
-        self.selected_server = interaction.values[0]
+        self.selected_server = interaction.data['values'][0]
         self.selected_mode = None
         self.selected_items = []
 
-        modes = SERVER_OPTIONS.get(self.selected_server, {})
+        # Usuń poprzednie selecty oprócz server_select
+        self.clear_items()
+        self.add_item(self.server_select)
+
+        # Dodaj select trybów
+        modes = SERVER_OPTIONS[self.selected_server].keys()
         self.mode_select = Select(
             placeholder="Wybierz tryb",
-            options=[discord.SelectOption(label=mode) for mode in modes.keys()],
+            options=[discord.SelectOption(label=mode) for mode in modes],
             custom_id="mode_select"
         )
-        self.mode_select.callback = self.mode_callback
+        self.mode_select.callback = self.mode_select_callback
+        self.add_item(self.mode_select)
 
+        # Dodaj przycisk zamknięcia ticketu
+        self.close_button = Button(label="Zamknij ticket", style=discord.ButtonStyle.red)
+        self.close_button.callback = self.close_ticket_callback
+        self.add_item(self.close_button)
+
+        await interaction.response.edit_message(view=self)
+
+    async def mode_select_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("To nie jest twój ticket!", ephemeral=True)
+            return
+
+        self.selected_mode = interaction.data['values'][0]
+        self.selected_items = []
+
+        # Usuń poprzednie selecty i przyciski
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.close_button)
 
-        await interaction.response.edit_message(view=self)
-
-    async def mode_callback(self, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
-            return
-
-        self.selected_mode = interaction.values[0]
-        self.selected_items = []
-
+        # Dodaj select itemów (multi select)
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
-            placeholder="Wybierz item(y)",
+            placeholder="Wybierz itemy (możesz wybrać kilka)",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
             max_values=len(items)
         )
-        self.item_select.callback = self.item_callback
-
-        self.clear_items()
-        self.add_item(self.server_select)
-        self.add_item(self.mode_select)
+        self.item_select.callback = self.item_select_callback
         self.add_item(self.item_select)
-        self.add_item(self.close_button)
 
         await interaction.response.edit_message(view=self)
 
-    async def item_callback(self, interaction: discord.Interaction):
+    async def item_select_callback(self, interaction: discord.Interaction):
         if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            await interaction.response.send_message("To nie jest twój ticket!", ephemeral=True)
             return
 
-        self.selected_items = interaction.values
+        self.selected_items = interaction.data['values']
+
         await interaction.response.send_message(
-            f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
+            f"Wybrałeś:\n**Serwer:** {self.selected_server}\n**Tryb:** {self.selected_mode}\n**Itemy:** {', '.join(self.selected_items)}",
             ephemeral=True
         )
 
+        # Logowanie do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -209,21 +191,14 @@ class MenuView(View):
 
     async def close_ticket_callback(self, interaction: discord.Interaction):
         if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
+            await interaction.response.send_message("Nie możesz zamknąć czyjegoś ticketu.", ephemeral=True)
             return
 
-        await interaction.response.defer()
-        await archive_and_close(self.channel, f"Ticket zamknięty przez {interaction.user}")
-        await interaction.followup.send("Ticket został zamknięty.", ephemeral=True)
+        await interaction.response.send_message("Ticket zostanie zamknięty.", ephemeral=True)
+        await asyncio.sleep(1)
+        await self.close_ticket(interaction.channel)
 
-async def archive_and_close(channel: discord.TextChannel, reason: str):
-    try:
-        await channel.edit(name=f"zarchiwizowany-{channel.name}", category=None, sync_permissions=True)
-        await channel.set_permissions(channel.guild.default_role, read_messages=False)
-        await channel.set_permissions(channel.guild.me, read_messages=True)
-        await channel.send(f"Ticket został zamknięty. Powód: {reason}")
-        # Możesz dodać więcej logiki archiwizacji
-    except Exception as e:
-        print(f"Error during archive_and_close: {e}")
+    async def close_ticket(self, channel):
+        await channel.delete(reason="Ticket zamknięty przez użytkownika")
 
-bot.run(os.getenv('TOKEN'))
+bot.run(os.getenv("DISCORD_TOKEN"))
