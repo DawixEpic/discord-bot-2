@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Select, Button
+from discord.ui import View, Select, Button, Modal, TextInput
 import asyncio
 import os
 from datetime import datetime
@@ -17,6 +17,7 @@ ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
+RATING_CHANNEL_ID = 1375528888586731762  # Kanał na oceny
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -36,6 +37,9 @@ SERVER_OPTIONS = {
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
+
+# Store ticket states (ticket_channel.id: {user_id, realized(bool)})
+open_tickets = {}
 
 @bot.event
 async def on_ready():
@@ -99,6 +103,7 @@ class OpenTicketButton(Button):
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         ticket_id = ticket_channel.id
+        open_tickets[ticket_channel.id] = {"user_id": interaction.user.id, "realized": False}
 
         await ticket_channel.send(
             f"{interaction.user.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
@@ -107,9 +112,10 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
-        await asyncio.sleep(3600)
-        if ticket_channel and ticket_channel in guild.text_channels:
-            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
+        # Opcjonalne auto zamknięcie po godzinie (można zmienić lub usunąć)
+        # await asyncio.sleep(3600)
+        # if ticket_channel and ticket_channel in guild.text_channels:
+        #     await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
 
 class CloseTicketButton(Button):
     def __init__(self, channel, author_id):
@@ -125,6 +131,39 @@ class CloseTicketButton(Button):
         await interaction.response.send_message("✅ Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
         await asyncio.sleep(5)
         await self.channel.delete(reason="Zamknięty przez użytkownika")
+
+class RealizeTicketButton(Button):
+    def __init__(self, channel):
+        super().__init__(label="✅ Zrealizuj ticket", style=discord.ButtonStyle.success)
+        self.channel = channel
+
+    async def callback(self, interaction: discord.Interaction):
+        # Sprawdzenie uprawnień admina
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ Nie masz uprawnień do zrealizowania ticketu.", ephemeral=True)
+            return
+
+        # Oznacz ticket jako zrealizowany
+        if self.channel.id in open_tickets:
+            open_tickets[self.channel.id]["realized"] = True
+            user_id = open_tickets[self.channel.id]["user_id"]
+            user = interaction.guild.get_member(user_id)
+            if user:
+                try:
+                    await user.send(
+                        f"Twój ticket na serwerze {interaction.guild.name} został oznaczony jako **zrealizowany**.\n"
+                        f"Prosimy o wystawienie oceny na kanale <#{RATING_CHANNEL_ID}>.\n"
+                        "Oceń w trzech kategoriach (1-5 gwiazdek): Szybkość dostawy, Przyjęcie zamówienia, Ogólna ocena.\n"
+                        "Odpowiedz w wiadomości w formacie:\n"
+                        "`!ocena <szybkosc> <przyjecie> <ogolna>`\n"
+                        "np. `!ocena 5 4 5`"
+                    )
+                except discord.Forbidden:
+                    await interaction.response.send_message("❌ Nie mogłem wysłać wiadomości do użytkownika (DM zablokowane?).", ephemeral=True)
+                    return
+            await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany. Użytkownik otrzymał instrukcje oceny.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Ten ticket nie jest w systemie lub już zrealizowany.", ephemeral=True)
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -143,6 +182,7 @@ class MenuView(View):
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
         self.add_item(CloseTicketButton(channel, member.id))
+        self.add_item(RealizeTicketButton(channel))
 
     async def server_callback(self, interaction: discord.Interaction):
         self.selected_server = interaction.data['values'][0]
@@ -161,6 +201,7 @@ class MenuView(View):
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(CloseTicketButton(self.channel, self.member.id))
+        self.add_item(RealizeTicketButton(self.channel))
         await interaction.response.edit_message(content=None, view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
@@ -182,6 +223,7 @@ class MenuView(View):
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
         self.add_item(CloseTicketButton(self.channel, self.member.id))
+        self.add_item(RealizeTicketButton(self.channel))
         await interaction.response.edit_message(content=None, view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
@@ -203,5 +245,26 @@ class MenuView(View):
                 timestamp=datetime.utcnow()
             )
             await log_channel.send(embed=embed)
+
+# Komenda do wystawiania ocen w formacie: !ocena 5 4 5
+@bot.command()
+async def ocena(ctx, szybkosc: int, przyjecie: int, ogolna: int):
+    if ctx.channel.id != RATING_CHANNEL_ID:
+        await ctx.send(f"❌ Oceny można wystawiać tylko na kanale <#{RATING_CHANNEL_ID}>.")
+        return
+    if not (1 <= szybkosc <= 5 and 1 <= przyjecie <= 5 and 1 <= ogolna <= 5):
+        await ctx.send("❌ Oceny muszą być w zakresie 1-5.")
+        return
+
+    embed = discord.Embed(
+        title="⭐ Nowa ocena od użytkownika",
+        description=f"**Użytkownik:** {ctx.author.mention}\n"
+                    f"**Szybkość dostawy:** {szybkosc} ⭐\n"
+                    f"**Przyjęcie zamówienia:** {przyjecie} ⭐\n"
+                    f"**Ogólna ocena:** {ogolna} ⭐",
+        color=discord.Color.green(),
+        timestamp=datetime.utcnow()
+    )
+    await ctx.send(embed=embed)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
