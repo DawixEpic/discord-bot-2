@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord.ui import View, Button, Select
 from datetime import datetime
 import os
-import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -43,6 +42,9 @@ class VerifyView(View):
     @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.success, custom_id="verify_button")
     async def verify_button(self, button: Button, interaction: discord.Interaction):
         role = interaction.guild.get_role(ROLE_ID)
+        if not role:
+            await interaction.response.send_message("Nie znaleziono roli do weryfikacji.", ephemeral=True)
+            return
         if role in interaction.user.roles:
             await interaction.response.send_message("Jesteś już zweryfikowany!", ephemeral=True)
             return
@@ -76,7 +78,6 @@ class TicketView(View):
 
         channel = await guild.create_text_channel(f"ticket-{interaction.user.name}".lower(), category=category, overwrites=overwrites)
 
-        # Wyślij menu wyboru w nowym tickecie
         await channel.send(f"{interaction.user.mention}, wybierz opcje z menu poniżej.", view=TicketMenuView(interaction.user))
 
         await interaction.response.send_message(f"Ticket został utworzony: {channel.mention}", ephemeral=True)
@@ -132,7 +133,6 @@ class TicketMenuView(View):
             custom_id="select_items",
             min_values=1,
             max_values=len(items),
-            disabled=False
         )
         self.item_select.callback = self.items_selected
 
@@ -148,7 +148,6 @@ class TicketMenuView(View):
             return
         self.selected_items = interaction.data['values']
 
-        # Wyślij podsumowanie wyboru i zaloguj w kanale logów
         desc = (f"**Użytkownik:** {interaction.user.mention}\n"
                 f"**Serwer:** {self.selected_server}\n"
                 f"**Tryb:** {self.selected_mode}\n"
@@ -179,4 +178,9 @@ async def ticket(ctx):
     )
     await ctx.send(embed=embed, view=TicketView())
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if not TOKEN:
+        print("Brak tokena bota w zmiennej DISCORD_TOKEN")
+    else:
+        bot.run(TOKEN)
