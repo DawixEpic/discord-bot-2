@@ -16,6 +16,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
+TICKET_CHANNEL_ID = 1373305137228939416
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
 
 verification_message_id = None
 ticket_message_id = None
@@ -73,61 +75,59 @@ async def on_raw_reaction_add(payload):
         return
 
     guild = bot.get_guild(payload.guild_id)
-    member = payload.member
+    if not guild:
+        return
 
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
         if role:
-            await member.add_roles(role)
+            await payload.member.add_roles(role)
             channel = guild.get_channel(payload.channel_id)
-            await channel.send(f"{member.mention}, zostałeś zweryfikowany!", delete_after=5)
-        else:
-            print("❌ Rola nieznaleziona.")
+            await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
-            print("❌ Kategoria nie istnieje.")
+            await guild.get_channel(payload.channel_id).send("❌ Błąd: Nie znaleziono kategorii dla ticketów.")
             return
 
-        # Sprawdzenie czy użytkownik już ma ticket
-        existing = discord.utils.get(
-            guild.text_channels,
-            name=lambda n: n.startswith("ticket-") and n.endswith(member.name.lower())
-        )
-        if existing:
-            await member.send("❗ Masz już otwarty ticket na serwerze.")
-            return
-
-        # Numeracja ticketu
-        ticket_id = len([c for c in guild.text_channels if c.name.startswith("ticket-")]) + 1
-        channel_name = f"ticket-{ticket_id:04}"
+        channel_name = f"ticket-{payload.member.name}".lower()
+        if discord.utils.get(guild.text_channels, name=channel_name):
+            return  # Ticket już istnieje
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            payload.member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
 
-        # Niestandardowa wiadomość powitalna
-        welcome_embed = discord.Embed(
-            title="🎫 Ticket otwarty",
-            description=(
-                f"Witaj {member.mention}!\n\n"
-                f"🕓 Data otwarcia: **{datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')}**\n"
-                f"Prosimy wybrać serwer,tryb oraz itemy z poniższego menu.\n"
-                f"Nasz zespół wkrótce się z Tobą skontaktuje. 😊"
-            ),
-            color=discord.Color.orange()
+        embed = discord.Embed(
+            title=f"🎫 Ticket #{ticket_channel.id}",
+            description=f"{payload.member.mention}, wybierz co chcesz kupić z menu poniżej.",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
         )
-        await ticket_channel.send(embed=welcome_embed, view=MenuView(member, ticket_channel))
+        await ticket_channel.send(embed=embed, view=MenuView(payload.member, ticket_channel))
 
+        # Auto-close po 1h
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
-            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu")
 
+# Przycisk zamykania ticketa
+class CloseButton(Button):
+    def __init__(self, channel):
+        super().__init__(label="Zamknij ticket", style=discord.ButtonStyle.danger)
+        self.channel = channel
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message("🔒 Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
+        await asyncio.sleep(5)
+        await self.channel.delete(reason="Zamknięty przyciskiem")
+
+# Menu wyboru
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
@@ -144,6 +144,7 @@ class MenuView(View):
         )
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
+        self.add_item(CloseButton(channel))  # Dodaj przycisk zamknięcia
 
     async def server_callback(self, interaction: discord.Interaction):
         self.selected_server = interaction.data['values'][0]
@@ -161,8 +162,9 @@ class MenuView(View):
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
+        self.add_item(CloseButton(self.channel))
 
-        await interaction.response.edit_message(content=None, view=self)
+        await interaction.response.edit_message(view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
         self.selected_mode = interaction.data['values'][0]
@@ -182,13 +184,14 @@ class MenuView(View):
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
+        self.add_item(CloseButton(self.channel))
 
-        await interaction.response.edit_message(content=None, view=self)
+        await interaction.response.edit_message(view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
         await interaction.response.send_message(
-            f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
+            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}** → `{', '.join(self.selected_items)}`",
             ephemeral=True
         )
 
