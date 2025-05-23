@@ -71,17 +71,21 @@ async def weryfikacja(ctx):
 
 @bot.event
 async def on_raw_reaction_add(payload):
+    # Ignoruj boty lub brak członka
     if payload.member is None or payload.member.bot:
         return
 
     guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
 
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
         if role:
             await payload.member.add_roles(role)
             channel = guild.get_channel(payload.channel_id)
-            await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
+            if channel:
+                await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
@@ -102,7 +106,6 @@ async def on_raw_reaction_add(payload):
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        # Automatyczne zamknięcie po godzinie (opcjonalne, możesz usunąć jeśli chcesz)
         async def auto_close():
             await asyncio.sleep(3600)
             if ticket_channel and ticket_channel in guild.text_channels:
@@ -135,7 +138,7 @@ class MenuView(View):
             await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
             return
 
-        self.selected_server = interaction.data['values'][0]
+        self.selected_server = interaction.values[0]
         self.selected_mode = None
         self.selected_items = []
 
@@ -152,14 +155,14 @@ class MenuView(View):
         self.add_item(self.mode_select)
         self.add_item(self.close_button)
 
-        await interaction.response.edit_message(content=None, view=self)
+        await interaction.response.edit_message(view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
         if interaction.user != self.member:
             await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
             return
 
-        self.selected_mode = interaction.data['values'][0]
+        self.selected_mode = interaction.values[0]
         self.selected_items = []
 
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
@@ -178,14 +181,14 @@ class MenuView(View):
         self.add_item(self.item_select)
         self.add_item(self.close_button)
 
-        await interaction.response.edit_message(content=None, view=self)
+        await interaction.response.edit_message(view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
         if interaction.user != self.member:
             await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
             return
 
-        self.selected_items = interaction.data['values']
+        self.selected_items = interaction.values
         await interaction.response.send_message(
             f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
             ephemeral=True
@@ -214,29 +217,13 @@ class MenuView(View):
         await interaction.followup.send("Ticket został zamknięty.", ephemeral=True)
 
 async def archive_and_close(channel: discord.TextChannel, reason: str):
-    # Pobieranie wszystkich wiadomości
-    messages = []
-    async for msg in channel.history(limit=None, oldest_first=True):
-        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        author = msg.author.name
-        content = msg.content
-        messages.append(f"[{timestamp}] {author}: {content}")
+    try:
+        await channel.edit(name=f"zarchiwizowany-{channel.name}", category=None, sync_permissions=True)
+        await channel.set_permissions(channel.guild.default_role, read_messages=False)
+        await channel.set_permissions(channel.guild.me, read_messages=True)
+        await channel.send(f"Ticket został zamknięty. Powód: {reason}")
+        # Możesz dodać więcej logiki archiwizacji
+    except Exception as e:
+        print(f"Error during archive_and_close: {e}")
 
-    # Tworzenie pliku tekstowego
-    filename = f"ticket-{channel.name}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.txt"
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("\n".join(messages))
-
-    guild = channel.guild
-    log_channel = guild.get_channel(LOG_CHANNEL_ID)
-    if log_channel:
-        # Wysyłanie pliku do kanału logów
-        await log_channel.send(f"📁 Archiwum ticketu `{channel.name}`. Powód: {reason}", file=discord.File(filename))
-
-    # Usuwanie pliku lokalnie
-    os.remove(filename)
-
-    # Usuwanie kanału ticketu
-    await channel.delete(reason=reason)
-
-bot.run("YOUR_BOT_TOKEN")
+bot.run(os.getenv('TOKEN'))
