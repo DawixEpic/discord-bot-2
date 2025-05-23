@@ -126,7 +126,6 @@ class MenuView(View):
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
 
-        # Dodajemy przycisk do zamknięcia ticketa
         self.close_button = Button(label="Zamknij ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
         self.close_button.callback = self.close_ticket_callback
         self.add_item(self.close_button)
@@ -209,33 +208,10 @@ class MenuView(View):
         if interaction.user != self.member:
             await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
             return
-        # Potwierdzenie zamknięcia - prosty widok z przyciskami
-        view = ConfirmCloseView(self.channel, self.member)
-        await interaction.response.send_message("Czy na pewno chcesz zamknąć ticket?", view=view, ephemeral=True)
 
-class ConfirmCloseView(View):
-    def __init__(self, channel, member):
-        super().__init__(timeout=60)
-        self.channel = channel
-        self.member = member
-
-    @discord.ui.button(label="Tak, zamknij", style=discord.ButtonStyle.red)
-    async def confirm(self, button: Button, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
-            return
         await interaction.response.defer()
         await archive_and_close(self.channel, f"Ticket zamknięty przez {interaction.user}")
         await interaction.followup.send("Ticket został zamknięty.", ephemeral=True)
-        self.stop()
-
-    @discord.ui.button(label="Anuluj", style=discord.ButtonStyle.grey)
-    async def cancel(self, button: Button, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("Nie możesz anulować.", ephemeral=True)
-            return
-        await interaction.response.send_message("Zamknięcie ticketu anulowane.", ephemeral=True)
-        self.stop()
 
 async def archive_and_close(channel: discord.TextChannel, reason: str):
     # Pobieranie wszystkich wiadomości
@@ -263,4 +239,4 @@ async def archive_and_close(channel: discord.TextChannel, reason: str):
     # Usuwanie kanału ticketu
     await channel.delete(reason=reason)
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run("YOUR_BOT_TOKEN")
