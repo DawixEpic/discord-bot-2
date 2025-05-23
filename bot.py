@@ -1,24 +1,23 @@
+
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.ui import View, Select, Button
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.reactions = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# --- KONFIGURACJA ---
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
-RATING_CHANNEL_ID = 1375528888586731762
-GUILD_ID = 1373253103176122399  # Wstaw ID swojego serwera
+RATING_CHANNEL_ID = 1375528888586731762  # kanał na oceny
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -39,13 +38,17 @@ SERVER_OPTIONS = {
     }
 }
 
-rated_users = {}  # user_id -> bool (czy ocenił aktualny ticket)
+# Przechowuje status ticketów zrealizowanych: {user_id: bool}
+realized_tickets = {}
+
+# Przechowuje ocenione tickety: {user_id: bool}
+rated_users = {}
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
-    ticket_cleanup.start()
 
+# --- KOMENDA WERYFIKACJA ---
 @bot.command()
 async def weryfikacja(ctx):
     embed = discord.Embed(
@@ -69,6 +72,7 @@ class VerifyButton(Button):
         else:
             await interaction.response.send_message("❌ Rola nie została znaleziona.", ephemeral=True)
 
+# --- KOMENDA TICKET ---
 @bot.command()
 async def ticket(ctx):
     embed = discord.Embed(
@@ -112,6 +116,11 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
+        # Ticket automatycznie zamyka się po 1h (możesz zmienić)
+        await asyncio.sleep(3600)
+        if ticket_channel and ticket_channel in guild.text_channels:
+            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
+
 class CloseTicketButton(Button):
     def __init__(self, channel, author_id):
         super().__init__(label="❌ Zamknij ticket", style=discord.ButtonStyle.danger)
@@ -127,6 +136,7 @@ class CloseTicketButton(Button):
         await asyncio.sleep(5)
         await self.channel.delete(reason="Zamknięty przez użytkownika")
 
+# --- MENU WYBORU SERWER -> TRYB -> ITEMY ---
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
@@ -187,11 +197,8 @@ class MenuView(View):
 
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
-        await interaction.response.send_message(
-            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
-            ephemeral=True
-        )
 
+        # Zaloguj wybór w kanale LOGÓW z przyciskiem ZREALIZUJ
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -199,100 +206,91 @@ class MenuView(View):
                 description=f"**Użytkownik:** {interaction.user.mention}\n"
                             f"**Serwer:** {self.selected_server}\n"
                             f"**Tryb:** {self.selected_mode}\n"
-                            f"**Itemy:** {', '.join(self.selected_items)}\n"
-                            f"**Ticket:** {self.channel.mention}\n"
-                            f"**Data:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                color=discord.Color.orange()
+                            f"**Itemy:** {', '.join(self.selected_items)}",
+                color=discord.Color.gold(),
+                timestamp=datetime.utcnow()
             )
-            view = View()
-            view.add_item(RealizeButton(self.channel.id, interaction.user.id, self.selected_server, self.selected_mode, self.selected_items))
+            view = RealizeButtonView(interaction.user.id)
             await log_channel.send(embed=embed, view=view)
 
-class RealizeButton(Button):
-    def __init__(self, ticket_channel_id, user_id, server, mode, items):
-        super().__init__(label="Zrealizuj", style=discord.ButtonStyle.success)
-        self.ticket_channel_id = ticket_channel_id
-        self.user_id = user_id
-        self.server = server
-        self.mode = mode
-        self.items = items
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.guild_permissions.manage_channels is False:
-            await interaction.response.send_message("❌ Tylko administratorzy mogą oznaczać realizację.", ephemeral=True)
-            return
-
-        # Zapisz, że użytkownik może teraz ocenić
-        rated_users[self.user_id] = False
-
         await interaction.response.send_message(
-            f"✅ Ticket został oznaczony jako zrealizowany. Użytkownik może teraz wystawić ocenę na kanale ocen.",
+            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
             ephemeral=True
         )
 
+# --- PRZYCISK ZREALIZUJ (w kanale logów) ---
+class RealizeButton(Button):
+    def __init__(self, user_id):
+        super().__init__(label="✅ Zrealizuj", style=discord.ButtonStyle.success)
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        # Tylko admin lub osoba powiązana z ticketem może kliknąć (lub admin)
+        if interaction.user.id != self.user_id and not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ Nie masz uprawnień do tego.", ephemeral=True)
+            return
+
+        realized_tickets[self.user_id] = True
+        if self.user_id in rated_users:
+            del rated_users[self.user_id]  # reset oceny, może ocenić teraz
+
+        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany! Możesz teraz wystawić ocenę.", ephemeral=True)
+
+        # Wyślij użytkownikowi menu ocen na DM lub na kanale ocen
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
-            embed = discord.Embed(
-                title="⭐ Wystaw ocenę",
-                description=(
-                    f"Użytkownik: <@{self.user_id}>\n"
-                    f"Serwer: **{self.server}**\n"
-                    f"Tryb: **{self.mode}**\n"
-                    f"Itemy: {', '.join(self.items)}\n\n"
-                    "Kliknij gwiazdkę, aby wystawić ocenę od 1 do 5.\n"
-                    "Możesz ocenić tylko raz, po zrealizowanym tickecie."
-                ),
-                color=discord.Color.gold()
-            )
             view = RatingView(self.user_id)
-            await rating_channel.send(embed=embed, view=view)
+            await rating_channel.send(
+                f"{interaction.guild.get_member(self.user_id).mention}, prosimy o ocenę zrealizowanego ticketa (1-5 gwiazdek):",
+                view=view
+            )
 
-class RatingView(View):
+class RealizeButtonView(View):
     def __init__(self, user_id):
         super().__init__(timeout=None)
-        self.user_id = user_id
-        for i in range(1, 6):
-            self.add_item(RatingButton(i, user_id))
+        self.add_item(RealizeButton(user_id))
 
-class RatingButton(Button):
-    def __init__(self, stars, user_id):
-        super().__init__(label=f"{stars} ⭐", style=discord.ButtonStyle.secondary)
-        self.stars = stars
+# --- MENU OCEN ---
+class RatingView(View):
+    def __init__(self, user_id):
+        super().__init__(timeout=300)  # 5 minut na ocenę
+        self.user_id = user_id
+        self.add_item(RatingSelect(user_id))
+
+class RatingSelect(Select):
+    def __init__(self, user_id):
+        options = [
+            discord.SelectOption(label="⭐ 1", description="Ocena 1 gwiazdka", value="1"),
+            discord.SelectOption(label="⭐⭐ 2", description="Ocena 2 gwiazdki", value="2"),
+            discord.SelectOption(label="⭐⭐⭐ 3", description="Ocena 3 gwiazdki", value="3"),
+            discord.SelectOption(label="⭐⭐⭐⭐ 4", description="Ocena 4 gwiazdki", value="4"),
+            discord.SelectOption(label="⭐⭐⭐⭐⭐ 5", description="Ocena 5 gwiazdek", value="5"),
+        ]
+        super().__init__(placeholder="Wybierz ocenę", min_values=1, max_values=1, options=options, custom_id="rating_select")
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ Możesz ocenić tylko swój własny ticket.", ephemeral=True)
+            await interaction.response.send_message("❌ Nie możesz ocenić za innego użytkownika.", ephemeral=True)
             return
 
-        if rated_users.get(self.user_id, True):
-            await interaction.response.send_message("❌ Już oceniłeś swój ticket lub nie masz uprawnień.", ephemeral=True)
+        if rated_users.get(self.user_id, False):
+            await interaction.response.send_message("❌ Już wystawiłeś ocenę dla tego ticketa.", ephemeral=True)
             return
 
-        rated_users[self.user_id] = True  # zaznacz ocenę jako oddaną
+        rated_users[self.user_id] = True
+        score = int(self.values[0])
 
-        await interaction.response.send_message(f"Dziękujemy za ocenę {self.stars}⭐!", ephemeral=True)
-        await interaction.message.delete()  # usuń wiadomość z oceną po oddaniu
+        embed = discord.Embed(
+            title="📝 Nowa ocena ticketa",
+            description=f"**Użytkownik:** {interaction.user.mention}\n**Ocena:** {'⭐' * score} ({score}/5)",
+            color=discord.Color.blue(),
+            timestamp=datetime.utcnow()
+        )
+        rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
+        if rating_channel:
+            await rating_channel.send(embed=embed)
 
-        # Możesz dodać tu logowanie oceny np. do kanału admina
+        await interaction.response.send_message(f"Dziękujemy za ocenę: {'⭐' * score}", ephemeral=True)
 
-# Background task do usuwania ticketów starszych niż 1 godzina
-@tasks.loop(minutes=10)
-async def ticket_cleanup():
-    guild = bot.get_guild(GUILD_ID)
-    if guild is None:
-        return
-    category = guild.get_channel(TICKET_CATEGORY_ID)
-    if not isinstance(category, discord.CategoryChannel):
-        return
-    now = datetime.now(timezone.utc)
-    for channel in category.channels:
-        age = (now - channel.created_at).total_seconds()
-        if age > 3600:  # starsze niż 1 godzina
-            try:
-                await channel.delete(reason="Automatyczne usuwanie starych ticketów")
-                print(f"Usunięto kanał {channel.name} (wiek {age} sekund)")
-            except Exception as e:
-                print(f"Błąd przy usuwaniu kanału {channel.name}: {e}")
-
-bot.run(os.getenv("TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
