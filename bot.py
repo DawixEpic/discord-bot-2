@@ -8,15 +8,16 @@ from datetime import datetime
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
+intents.reactions = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- KONFIGURACJA ---
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-RATING_CHANNEL_ID = 1375528888586731762  # kanał na oceny
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
+RATING_CHANNEL_ID = 1375528888586731762  # Kanał do ocen
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -37,17 +38,16 @@ SERVER_OPTIONS = {
     }
 }
 
-# Przechowuje status ticketów zrealizowanych: {user_id: bool}
-realized_tickets = {}
-
-# Przechowuje ocenione tickety: {user_id: bool}
+# Przechowuje info, którzy użytkownicy mają ocenę przyznaną (true = ocenili)
 rated_users = {}
+
+# Przechowuje zrealizowane tickety (user_id: True/False)
+realized_tickets = {}
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
 
-# --- KOMENDA WERYFIKACJA ---
 @bot.command()
 async def weryfikacja(ctx):
     embed = discord.Embed(
@@ -71,7 +71,6 @@ class VerifyButton(Button):
         else:
             await interaction.response.send_message("❌ Rola nie została znaleziona.", ephemeral=True)
 
-# --- KOMENDA TICKET ---
 @bot.command()
 async def ticket(ctx):
     embed = discord.Embed(
@@ -107,6 +106,8 @@ class OpenTicketButton(Button):
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         ticket_id = ticket_channel.id
+        realized_tickets[interaction.user.id] = False  # Ticket nowy, nie zrealizowany
+        rated_users[interaction.user.id] = False  # Reset oceny
 
         await ticket_channel.send(
             f"{interaction.user.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
@@ -115,7 +116,6 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
-        # Ticket automatycznie zamyka się po 1h (możesz zmienić)
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
@@ -135,7 +135,6 @@ class CloseTicketButton(Button):
         await asyncio.sleep(5)
         await self.channel.delete(reason="Zamknięty przez użytkownika")
 
-# --- MENU WYBORU SERWER -> TRYB -> ITEMY ---
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
@@ -197,7 +196,7 @@ class MenuView(View):
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
-        # Zaloguj wybór w kanale LOGÓW z przyciskiem ZREALIZUJ
+        # Logowanie wyboru i wysłanie przycisku "Zrealizuj"
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -209,7 +208,8 @@ class MenuView(View):
                 color=discord.Color.gold(),
                 timestamp=datetime.utcnow()
             )
-            view = RealizeButtonView(interaction.user.id)
+            # Dodajemy przycisk "Zrealizuj" i wysyłamy w kanale logów
+            view = RealizeButtonView(interaction.user.id, self.selected_server, self.selected_mode, self.selected_items)
             await log_channel.send(embed=embed, view=view)
 
         await interaction.response.send_message(
@@ -217,44 +217,42 @@ class MenuView(View):
             ephemeral=True
         )
 
-# --- PRZYCISK ZREALIZUJ (w kanale logów) ---
 class RealizeButton(Button):
-    def __init__(self, user_id):
+    def __init__(self, user_id, server, mode, items):
         super().__init__(label="✅ Zrealizuj", style=discord.ButtonStyle.success)
         self.user_id = user_id
+        self.server = server
+        self.mode = mode
+        self.items = items
 
     async def callback(self, interaction: discord.Interaction):
-        # Tylko admin lub osoba powiązana z ticketem może kliknąć (lub admin)
-        if interaction.user.id != self.user_id and not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do tego.", ephemeral=True)
+        # Tylko admin lub user właściciel
+        if not (interaction.user.guild_permissions.manage_channels or interaction.user.id == self.user_id):
+            await interaction.response.send_message("❌ Nie masz uprawnień do zrealizowania tego ticketa.", ephemeral=True)
             return
 
         realized_tickets[self.user_id] = True
-        if self.user_id in rated_users:
-            del rated_users[self.user_id]  # reset oceny, może ocenić teraz
+        rated_users[self.user_id] = False  # reset oceny - teraz może ocenić
 
-        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany! Możesz teraz wystawić ocenę.", ephemeral=True)
-
-        # Wyślij użytkownikowi menu ocen na DM lub na kanale ocen
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
+            embed = discord.Embed(
+                title="🛒 Ticket zrealizowany",
+                description=(f"**Użytkownik:** <@{self.user_id}>\n"
+                             f"**Serwer:** {self.server}\n"
+                             f"**Tryb:** {self.mode}\n"
+                             f"**Itemy:** {', '.join(self.items)}"),
+                color=discord.Color.green(),
+                timestamp=datetime.utcnow()
+            )
             view = RatingView(self.user_id)
             await rating_channel.send(
-                f"{interaction.guild.get_member(self.user_id).mention}, prosimy o ocenę zrealizowanego ticketa (1-5 gwiazdek):",
+                f"<@{self.user_id}>, prosimy o ocenę zrealizowanego ticketa (1-5 gwiazdek). Można ocenić tylko po zakupie/zrealizowaniu ticketa.",
+                embed=embed,
                 view=view
             )
 
-class RealizeButtonView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=None)
-        self.add_item(RealizeButton(user_id))
-
-# --- MENU OCEN ---
-class RatingView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=300)  # 5 minut na ocenę
-        self.user_id = user_id
-        self.add_item(RatingSelect(user_id))
+        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
 
 class RatingSelect(Select):
     def __init__(self, user_id):
@@ -290,6 +288,22 @@ class RatingSelect(Select):
         if rating_channel:
             await rating_channel.send(embed=embed)
 
+        # Usuwamy wiadomość z menu ocen, aby uniemożliwić kolejne oceny
+        try:
+            await interaction.message.delete()
+        except:
+            pass
+
         await interaction.response.send_message(f"Dziękujemy za ocenę: {'⭐' * score}", ephemeral=True)
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+class RatingView(View):
+    def __init__(self, user_id):
+        super().__init__(timeout=None)
+        self.add_item(RatingSelect(user_id))
+
+class RealizeButtonView(View):
+    def __init__(self, user_id, server, mode, items):
+        super().__init__(timeout=None)
+        self.add_item(RealizeButton(user_id, server, mode, items))
+
+bot.run(os.getenv("TOKEN"))
