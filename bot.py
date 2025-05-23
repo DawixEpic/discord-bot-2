@@ -226,46 +226,59 @@ class RealizeButton(Button):
     async def callback(self, interaction: discord.Interaction):
         # Tylko admin lub osoba powiązana z ticketem może kliknąć (lub admin)
         if interaction.user.id != self.user_id and not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do tego.", ephemeral=True)
+            await interaction.response.send_message("❌ Nie masz uprawnień do realizacji tego ticketu.", ephemeral=True)
             return
 
+        # Oznacz ticket jako zrealizowany
         realized_tickets[self.user_id] = True
-        if self.user_id in rated_users:
-            del rated_users[self.user_id]  # reset oceny, może ocenić teraz
 
-        # Usuń wiadomość z logów (czyli tę z tym przyciskiem)
+        # Usuń wiadomość logu (przycisk + embed)
         await interaction.message.delete()
 
-        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany! Możesz teraz wystawić ocenę.", ephemeral=True)
+        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
 
-        # Wyślij użytkownikowi menu ocen na DM lub na kanale ocen
-        rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
-        if rating_channel:
-            view = RatingView(self.user_id)
-            await rating_channel.send(
-                f"{interaction.guild.get_member(self.user_id).mention}, prosimy o ocenę zrealizowanego ticketa (1-5 gwiazdek):",
-                view=view
-            )
+        # Poproś o ocenę ticketu
+        await send_rating_prompt(interaction.guild, self.user_id)
 
 class RealizeButtonView(View):
     def __init__(self, user_id):
         super().__init__(timeout=None)
         self.add_item(RealizeButton(user_id))
 
-# --- MENU OCEN (gwiazdki) ---
+# --- WYŚLIJ WIADOMOŚĆ Z OCENĄ ---
+async def send_rating_prompt(guild, user_id):
+    user = guild.get_member(user_id)
+    if not user:
+        return
+    rating_channel = guild.get_channel(RATING_CHANNEL_ID)
+    if not rating_channel:
+        return
+
+    embed = discord.Embed(
+        title="⭐ Oceń ticket",
+        description="Wybierz ocenę od 1 do 5 gwiazdek.",
+        color=discord.Color.blurple()
+    )
+    view = RatingView(user_id)
+    await rating_channel.send(content=user.mention, embed=embed, view=view)
+
+# --- VIEW OCENY ---
 class RatingView(View):
     def __init__(self, user_id):
-        super().__init__(timeout=300)  # 5 minut na ocenę
+        super().__init__(timeout=300)
         self.user_id = user_id
-        self.rating_select = Select(
-            placeholder="Wybierz ocenę (1-5)",
-            options=[discord.SelectOption(label=str(i), description=f"{i} gwiazdek", value=str(i)) for i in range(1,6)],
-            custom_id="rating_select"
-        )
-        self.rating_select.callback = self.rating_callback
+        self.rating_select = RatingSelect(user_id)
         self.add_item(self.rating_select)
 
-    async def rating_callback(self, interaction: discord.Interaction):
+class RatingSelect(Select):
+    def __init__(self, user_id):
+        options = [
+            discord.SelectOption(label=str(i), description=f"{i} gwiazdek", value=str(i)) for i in range(1, 6)
+        ]
+        super().__init__(placeholder="Wybierz ocenę (1-5)", options=options, custom_id="rating_select")
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ To nie twoja ocena.", ephemeral=True)
             return
@@ -274,10 +287,9 @@ class RatingView(View):
             await interaction.response.send_message("❌ Już wystawiłeś ocenę.", ephemeral=True)
             return
 
-        rating = int(interaction.data['values'][0])
+        rating = int(self.values[0])
         rated_users[self.user_id] = True
 
-        # Wyślij embed z oceną do kanału ocen
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
             embed = discord.Embed(
@@ -289,6 +301,10 @@ class RatingView(View):
             await rating_channel.send(embed=embed)
 
         await interaction.response.send_message(f"✅ Dziękujemy za ocenę: {rating} ⭐", ephemeral=True)
-        self.stop()
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+        # Usuwamy wiadomość z oceną po wystawieniu oceny
+        await interaction.message.delete()
+
+        self.view.stop()
+
+bot.run(os.getenv('DISCORD_TOKEN'))
