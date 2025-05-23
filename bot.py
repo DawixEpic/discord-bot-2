@@ -37,7 +37,6 @@ SERVER_OPTIONS = {
 class VerifyView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(Button(label="Zweryfikuj się", style=discord.ButtonStyle.success, custom_id="verify_button"))
 
     @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.success, custom_id="verify_button")
     async def verify_button(self, button: Button, interaction: discord.Interaction):
@@ -54,7 +53,6 @@ class VerifyView(View):
 class TicketView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(Button(label="Otwórz ticket", style=discord.ButtonStyle.primary, custom_id="open_ticket_button"))
 
     @discord.ui.button(label="Otwórz ticket", style=discord.ButtonStyle.primary, custom_id="open_ticket_button")
     async def open_ticket(self, button: Button, interaction: discord.Interaction):
@@ -64,7 +62,6 @@ class TicketView(View):
             await interaction.response.send_message("Nie znaleziono kategorii ticketów.", ephemeral=True)
             return
 
-        # Sprawdź czy użytkownik już ma ticket
         existing = discord.utils.get(guild.text_channels, name=f"ticket-{interaction.user.name.lower()}")
         if existing:
             await interaction.response.send_message(f"Masz już otwarty ticket: {existing.mention}", ephemeral=True)
@@ -78,90 +75,13 @@ class TicketView(View):
 
         channel = await guild.create_text_channel(f"ticket-{interaction.user.name}".lower(), category=category, overwrites=overwrites)
 
-        await channel.send(f"{interaction.user.mention}, wybierz opcje z menu poniżej.", view=TicketMenuView(interaction.user))
+        await channel.send(f"{interaction.user.mention}, ticket otwarty! Tutaj wybierz serwer, tryb i itemy.", view=None)
 
         await interaction.response.send_message(f"Ticket został utworzony: {channel.mention}", ephemeral=True)
 
-class TicketMenuView(View):
-    def __init__(self, user):
-        super().__init__(timeout=None)
-        self.user = user
-        self.selected_server = None
-        self.selected_mode = None
-        self.selected_items = []
-
-        self.server_select = Select(
-            placeholder="Wybierz serwer",
-            options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
-            custom_id="select_server"
-        )
-        self.server_select.callback = self.server_selected
-        self.add_item(self.server_select)
-
-    async def server_selected(self, interaction: discord.Interaction):
-        if interaction.user != self.user:
-            await interaction.response.send_message("To nie Twój ticket!", ephemeral=True)
-            return
-        self.selected_server = interaction.data['values'][0]
-        self.selected_mode = None
-        self.selected_items = []
-
-        modes = SERVER_OPTIONS[self.selected_server]
-        self.mode_select = Select(
-            placeholder="Wybierz tryb",
-            options=[discord.SelectOption(label=mode) for mode in modes.keys()],
-            custom_id="select_mode"
-        )
-        self.mode_select.callback = self.mode_selected
-
-        self.clear_items()
-        self.add_item(self.server_select)
-        self.add_item(self.mode_select)
-        await interaction.response.edit_message(view=self)
-
-    async def mode_selected(self, interaction: discord.Interaction):
-        if interaction.user != self.user:
-            await interaction.response.send_message("To nie Twój ticket!", ephemeral=True)
-            return
-        self.selected_mode = interaction.data['values'][0]
-        self.selected_items = []
-
-        items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
-        self.item_select = Select(
-            placeholder="Wybierz itemy",
-            options=[discord.SelectOption(label=item) for item in items],
-            custom_id="select_items",
-            min_values=1,
-            max_values=len(items),
-        )
-        self.item_select.callback = self.items_selected
-
-        self.clear_items()
-        self.add_item(self.server_select)
-        self.add_item(self.mode_select)
-        self.add_item(self.item_select)
-        await interaction.response.edit_message(view=self)
-
-    async def items_selected(self, interaction: discord.Interaction):
-        if interaction.user != self.user:
-            await interaction.response.send_message("To nie Twój ticket!", ephemeral=True)
-            return
-        self.selected_items = interaction.data['values']
-
-        desc = (f"**Użytkownik:** {interaction.user.mention}\n"
-                f"**Serwer:** {self.selected_server}\n"
-                f"**Tryb:** {self.selected_mode}\n"
-                f"**Itemy:** {', '.join(self.selected_items)}")
-
-        await interaction.response.send_message(f"Wybrałeś:\n{desc}", ephemeral=True)
-
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            embed = discord.Embed(title="Nowy wybór w tickecie", description=desc, color=discord.Color.gold(), timestamp=datetime.utcnow())
-            await log_channel.send(embed=embed)
-
 @bot.command()
 async def weryfikacja(ctx):
+    print("Wywołano komendę !weryfikacja")  # debug
     embed = discord.Embed(
         title="Weryfikacja",
         description="Kliknij przycisk, aby się zweryfikować i uzyskać dostęp do serwera.",
@@ -171,16 +91,21 @@ async def weryfikacja(ctx):
 
 @bot.command()
 async def ticket(ctx):
+    print("Wywołano komendę !ticket")  # debug
     embed = discord.Embed(
         title="System Ticketów",
-        description="Kliknij przycisk, aby otworzyć ticket i wybrać serwer, tryb oraz itemy.",
+        description="Kliknij przycisk, aby otworzyć ticket.",
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=TicketView())
 
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+    print(f"Received message: {message.content}")  # debug
+    await bot.process_commands(message)
+
 if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    if not TOKEN:
-        print("Brak tokena bota w zmiennej DISCORD_TOKEN")
-    else:
-        bot.run(TOKEN)
+    TOKEN = os.getenv("DISCORD_TOKEN") or "TWÓJ_TOKEN_TUTAJ"
+    bot.run(TOKEN)
