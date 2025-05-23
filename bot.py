@@ -16,8 +16,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-VERIFICATION_CHANNEL_ID = 1373305137228939416
-TICKET_PANEL_CHANNEL_ID = 1373305137228939416
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -38,8 +37,6 @@ SERVER_OPTIONS = {
     }
 }
 
-ticket_counter = 0
-
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
@@ -48,7 +45,7 @@ async def on_ready():
 async def weryfikacja(ctx):
     embed = discord.Embed(
         title="✅ Weryfikacja",
-        description="Kliknij przycisk poniżej, aby się zweryfikować.",
+        description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.",
         color=discord.Color.blue()
     )
     view = View()
@@ -57,7 +54,7 @@ async def weryfikacja(ctx):
 
 class VerifyButton(Button):
     def __init__(self):
-        super().__init__(label="✅ Zweryfikuj się", style=discord.ButtonStyle.success, custom_id="verify")
+        super().__init__(label="✅ Zweryfikuj", style=discord.ButtonStyle.success)
 
     async def callback(self, interaction: discord.Interaction):
         role = interaction.guild.get_role(ROLE_ID)
@@ -65,13 +62,13 @@ class VerifyButton(Button):
             await interaction.user.add_roles(role)
             await interaction.response.send_message("✅ Zweryfikowano pomyślnie!", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ Rola weryfikacyjna nie została znaleziona.", ephemeral=True)
+            await interaction.response.send_message("❌ Rola nie została znaleziona.", ephemeral=True)
 
 @bot.command()
 async def ticket(ctx):
     embed = discord.Embed(
-        title="🎟️ Otwórz ticket",
-        description="Kliknij przycisk poniżej, aby otworzyć ticket i rozpocząć wybór.",
+        title="🎟️ System ticketów",
+        description="Kliknij poniżej, aby otworzyć ticket i wybrać co chcesz kupić.",
         color=discord.Color.green()
     )
     view = View()
@@ -80,59 +77,54 @@ async def ticket(ctx):
 
 class OpenTicketButton(Button):
     def __init__(self):
-        super().__init__(label="🎟️ Otwórz ticket", style=discord.ButtonStyle.primary, custom_id="open_ticket")
+        super().__init__(label="🎟️ Otwórz ticket", style=discord.ButtonStyle.primary)
 
     async def callback(self, interaction: discord.Interaction):
-        global ticket_counter
         guild = interaction.guild
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
-            await interaction.response.send_message("❌ Kategoria ticketów nie istnieje.", ephemeral=True)
+            await interaction.response.send_message("❌ Nie znaleziono kategorii dla ticketów.", ephemeral=True)
             return
 
-        existing = discord.utils.get(guild.text_channels, name=f"ticket-{interaction.user.name}".lower())
-        if existing:
-            await interaction.response.send_message("❌ Masz już otwarty ticket.", ephemeral=True)
+        channel_name = f"ticket-{interaction.user.name}".lower()
+        if discord.utils.get(guild.channels, name=channel_name):
+            await interaction.response.send_message("❗ Masz już otwarty ticket.", ephemeral=True)
             return
 
-        ticket_counter += 1
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
 
-        channel = await guild.create_text_channel(
-            name=f"ticket-{interaction.user.name}".lower(),
-            category=category,
-            overwrites=overwrites
+        ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+        ticket_id = ticket_channel.id
+
+        await ticket_channel.send(
+            f"{interaction.user.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
+            view=MenuView(interaction.user, ticket_channel)
         )
 
-        embed = discord.Embed(
-            title=f"🎫 Ticket #{ticket_counter}",
-            description=f"Witaj {interaction.user.mention}! Wybierz poniżej, co chcesz kupić:",
-            color=discord.Color.orange()
-        )
-
-        await channel.send(embed=embed, view=MenuView(interaction.user, channel))
-
-        await interaction.response.send_message(f"✅ Ticket utworzony: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
         await asyncio.sleep(3600)
-        if channel and channel in guild.text_channels:
-            await channel.delete(reason="Automatyczne zamknięcie ticketu po 1 godzinie")
+        if ticket_channel and ticket_channel in guild.text_channels:
+            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
 
 class CloseTicketButton(Button):
-    def __init__(self, channel):
+    def __init__(self, channel, author_id):
         super().__init__(label="❌ Zamknij ticket", style=discord.ButtonStyle.danger)
         self.channel = channel
+        self.author_id = author_id
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.user != self.channel.recipient and not interaction.user.guild_permissions.manage_channels:
+        if interaction.user.id != self.author_id and not interaction.user.guild_permissions.manage_channels:
             await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketu.", ephemeral=True)
             return
 
-        await self.channel.delete(reason="Ticket zamknięty przez użytkownika")
+        await interaction.response.send_message("✅ Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
+        await asyncio.sleep(5)
+        await self.channel.delete(reason="Zamknięty przez użytkownika")
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -150,13 +142,9 @@ class MenuView(View):
         )
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
-        self.add_item(CloseTicketButton(channel))
+        self.add_item(CloseTicketButton(channel, member.id))
 
     async def server_callback(self, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("❌ To nie jest twój ticket!", ephemeral=True)
-            return
-
         self.selected_server = interaction.data['values'][0]
         self.selected_mode = None
         self.selected_items = []
@@ -172,21 +160,16 @@ class MenuView(View):
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
-        self.add_item(CloseTicketButton(self.channel))
-
-        await interaction.response.edit_message(view=self)
+        self.add_item(CloseTicketButton(self.channel, self.member.id))
+        await interaction.response.edit_message(content=None, view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("❌ To nie jest twój ticket!", ephemeral=True)
-            return
-
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
         self.item_select = Select(
-            placeholder="Wybierz item(y)",
+            placeholder="Wybierz itemy",
             options=[discord.SelectOption(label=item) for item in items],
             custom_id="item_select",
             min_values=1,
@@ -198,19 +181,13 @@ class MenuView(View):
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
-        self.add_item(CloseTicketButton(self.channel))
-
-        await interaction.response.edit_message(view=self)
+        self.add_item(CloseTicketButton(self.channel, self.member.id))
+        await interaction.response.edit_message(content=None, view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
-        if interaction.user != self.member:
-            await interaction.response.send_message("❌ To nie jest twój ticket!", ephemeral=True)
-            return
-
         self.selected_items = interaction.data['values']
-
         await interaction.response.send_message(
-            f"✅ Wybrałeś: **{self.selected_server}** / **{self.selected_mode}** / **{', '.join(self.selected_items)}**",
+            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
             ephemeral=True
         )
 
