@@ -8,6 +8,7 @@ from datetime import datetime
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
+intents.reactions = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -15,7 +16,11 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-REVIEW_CHANNEL_ID = 1375528888586731762
+TICKET_CHANNEL_ID = 1373305137228939416
+ADMIN_PANEL_CHANNEL_ID = 1374781085895884820
+
+verification_message_id = None
+ticket_message_id = None
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -36,281 +41,226 @@ SERVER_OPTIONS = {
     }
 }
 
-# -------------------------------
-# GLOBALNE DICTIONARY na stany
-# -------------------------------
+@bot.event
+async def on_ready():
+    print(f"✅ Zalogowano jako {bot.user}")
 
-# user_id: bool czy może ocenić (po zrealizowanym tickecie)
-user_can_review = {}
+@bot.command()
+async def ticket(ctx):
+    global ticket_message_id
+    embed = discord.Embed(
+        title="🎟️ System ticketów",
+        description="Reaguj na 🎟️ aby otworzyć ticket i wybrać co chcesz kupić.",
+        color=discord.Color.green()
+    )
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("🎟️")
+    ticket_message_id = msg.id
 
-# user_id: dane ostatniego zamówienia (str)
-user_orders = {}
+@bot.command()
+async def weryfikacja(ctx):
+    global verification_message_id
+    embed = discord.Embed(
+        title="✅ Weryfikacja",
+        description="Kliknij ✅ aby się zweryfikować i uzyskać dostęp do serwera.",
+        color=discord.Color.blue()
+    )
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("✅")
+    verification_message_id = msg.id
 
-# ---------------------------------
-# PRZYCISKI I MENU OCENY
-# ---------------------------------
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.member is None or payload.member.bot:
+        return
 
-class ReviewSelect(Select):
-    def __init__(self, user_id):
-        options = [
-            discord.SelectOption(label="⭐️", description="Ocena 1 - Bardzo słabo"),
-            discord.SelectOption(label="⭐⭐️", description="Ocena 2 - Słabo"),
-            discord.SelectOption(label="⭐⭐⭐️", description="Ocena 3 - Średnio"),
-            discord.SelectOption(label="⭐⭐⭐⭐️", description="Ocena 4 - Dobrze"),
-            discord.SelectOption(label="⭐⭐⭐⭐⭐️", description="Ocena 5 - Bardzo dobrze"),
-        ]
-        super().__init__(placeholder="Wybierz ocenę", min_values=1, max_values=1, options=options)
-        self.user_id = user_id
+    guild = bot.get_guild(payload.guild_id)
 
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ To menu nie jest dla Ciebie.", ephemeral=True)
-            return
-
-        rating = self.values[0]
-        # Pobierz dane zamówienia użytkownika
-        order_desc = user_orders.get(self.user_id, "Brak danych zamówienia")
-        date_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        user_name = interaction.user.name
-
-        # Wyślij ocenę do kanału ocen
-        review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
-        if not review_channel:
-            await interaction.response.send_message("❌ Kanał ocen nie został znaleziony.", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title="📝 Nowa ocena zamówienia",
-            description=f"Ocena: {rating}",
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
-        )
-        embed.add_field(name="Użytkownik", value=user_name, inline=False)
-        embed.add_field(name="Data zamówienia", value=date_str, inline=False)
-        embed.add_field(name="Zamówienie", value=order_desc, inline=False)
-
-        await review_channel.send(embed=embed)
-        await interaction.response.send_message("✅ Dziękujemy za wystawienie oceny!", ephemeral=True)
-
-        # Ustaw że użytkownik już ocenił (nie może ocenić ponownie, dopóki nie zrealizuje kolejnego ticketa)
-        user_can_review[self.user_id] = False
-        # Opcjonalnie usuń dane zamówienia
-        user_orders.pop(self.user_id, None)
-
-        # Usuń menu po ocenie
-        await interaction.message.edit(view=None)
-
-class ReviewView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=300)
-        self.add_item(ReviewSelect(user_id))
-
-    async def on_timeout(self):
-        # Po czasie usuń menu oceny
-        for child in self.children:
-            child.disabled = True
-        # Musisz mieć dostęp do message, żeby edytować (tu nie mamy, więc to minimalny przykład)
-        # Możesz to rozwiązać np. zapisując message w konstruktorze
-        # pass
-
-# ---------------------------------
-# TWÓJ KOD Z BUTTONAMI I MENU
-# ---------------------------------
-
-class VerifyButton(Button):
-    def __init__(self):
-        super().__init__(label="✅ Zweryfikuj", style=discord.ButtonStyle.success)
-
-    async def callback(self, interaction: discord.Interaction):
-        role = interaction.guild.get_role(ROLE_ID)
+    if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
+        role = guild.get_role(ROLE_ID)
         if role:
-            await interaction.user.add_roles(role)
-            await interaction.response.send_message("✅ Zweryfikowano pomyślnie!", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Rola nie została znaleziona.", ephemeral=True)
+            await payload.member.add_roles(role)
+            channel = guild.get_channel(payload.channel_id)
+            await channel.send(f"{payload.member.mention}, zostałeś zweryfikowany!", delete_after=5)
 
-class OpenTicketButton(Button):
-    def __init__(self):
-        super().__init__(label="🎟️ Otwórz ticket", style=discord.ButtonStyle.primary)
-
-    async def callback(self, interaction: discord.Interaction):
-        guild = interaction.guild
+    elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
-            await interaction.response.send_message("❌ Nie znaleziono kategorii dla ticketów.", ephemeral=True)
             return
 
-        channel_name = f"ticket-{interaction.user.name}".lower()
-        if discord.utils.get(guild.channels, name=channel_name):
-            await interaction.response.send_message("❗ Masz już otwarty ticket.", ephemeral=True)
+        channel_name = f"ticket-{payload.member.name}".lower()
+        existing = discord.utils.get(guild.channels, name=channel_name)
+        if existing:
             return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            payload.member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        ticket_id = ticket_channel.id
+        await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        await ticket_channel.send(
-            f"{interaction.user.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
-            view=MenuView(interaction.user, ticket_channel)
-        )
-
-        await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
-
-        await asyncio.sleep(3600)
-        if ticket_channel and ticket_channel in guild.text_channels:
-            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
-
-class CloseTicketButton(Button):
-    def __init__(self, channel, author_id):
-        super().__init__(label="❌ Zamknij ticket", style=discord.ButtonStyle.danger)
-        self.channel = channel
-        self.author_id = author_id
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id and not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketu.", ephemeral=True)
-            return
-
-        await interaction.response.send_message("✅ Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
-        await asyncio.sleep(5)
-        await self.channel.delete(reason="Zamknięty przez użytkownika")
-
-class MarkDoneButton(Button):
-    def __init__(self, user_name, date_str, order_desc, user_id):
-        super().__init__(label="✔️ Zrealizowane", style=discord.ButtonStyle.success)
-        self.user_name = user_name
-        self.date_str = date_str
-        self.order_desc = order_desc
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction):
-        # Wysyłamy embed z informacją o zrealizowanym zamówieniu do kanału logów
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if not log_channel:
-            await interaction.response.send_message("❌ Kanał logów nie został znaleziony.", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title="✅ Zamówienie zrealizowane",
-            color=discord.Color.green(),
-            timestamp=datetime.utcnow()
-        )
-        embed.add_field(name="Użytkownik", value=self.user_name, inline=False)
-        embed.add_field(name="Data zamówienia", value=self.date_str, inline=False)
-        embed.add_field(name="Zamówienie", value=self.order_desc, inline=False)
-
-        # Wyślij embed z przyciskiem do oznaczenia oceny
-        view = ReviewRequestView(self.user_id, self.user_name, self.date_str, self.order_desc)
-        await log_channel.send(embed=embed, view=view)
-
-        # Ustaw, że użytkownik może teraz ocenić
-        user_can_review[self.user_id] = True
-        user_orders[self.user_id] = self.order_desc
-
-        await interaction.response.send_message("✅ Zamówienie oznaczone jako zrealizowane.", ephemeral=True)
-
-class ReviewRequestButton(Button):
-    def __init__(self, user_id, user_name, date_str, order_desc):
-        super().__init__(label="📝 Poproś o ocenę", style=discord.ButtonStyle.primary)
-        self.user_id = user_id
-        self.user_name = user_name
-        self.date_str = date_str
-        self.order_desc = order_desc
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ Tylko użytkownik zamówienia może wystawić ocenę.", ephemeral=True)
-            return
-
-        # Wyślij do użytkownika menu oceny
-        view = ReviewView(self.user_id)
-        await interaction.response.send_message("Wystaw swoją ocenę:", view=view, ephemeral=True)
-
-class ReviewRequestView(View):
-    def __init__(self, user_id, user_name, date_str, order_desc):
-        super().__init__(timeout=600)
-        self.add_item(ReviewRequestButton(user_id, user_name, date_str, order_desc))
-
-# -----------------------------------
-# MENU WIELOPOZIOMOWE - Serwer → Tryb → Itemy
-# -----------------------------------
-
-class ItemSelect(Select):
-    def __init__(self, user, server, mode):
-        options = [discord.SelectOption(label=item) for item in SERVER_OPTIONS[server][mode]]
-        super().__init__(placeholder="Wybierz item", min_values=1, max_values=1, options=options)
-        self.user = user
-        self.server = server
-        self.mode = mode
-
-    async def callback(self, interaction: discord.Interaction):
-        # Zakończenie wyboru - podsumowanie i przycisk do zrealizowania
-        item = self.values[0]
-        desc = f"Serwer: {self.server}\nTryb: {self.mode}\nItem: {item}"
-
-        # Zapisz dane do user_orders aby potem wykorzystać do oceny
-        user_orders[self.user.id] = desc
-
-        embed = discord.Embed(title="Podsumowanie zamówienia", description=desc, color=discord.Color.gold())
-        view = View()
-        view.add_item(CloseTicketButton(interaction.channel, self.user.id))
-        view.add_item(MarkDoneButton(self.user.name, datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"), desc, self.user.id))
-
-        await interaction.response.edit_message(embed=embed, view=view)
-
-class ModeSelect(Select):
-    def __init__(self, user, server):
-        options = [discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[server].keys()]
-        super().__init__(placeholder="Wybierz tryb", min_values=1, max_values=1, options=options)
-        self.user = user
-        self.server = server
-
-    async def callback(self, interaction: discord.Interaction):
-        mode = self.values[0]
-        view = View()
-        view.add_item(ItemSelect(self.user, self.server, mode))
-        await interaction.response.edit_message(content=f"Wybrano tryb: {mode}\nTeraz wybierz item:", view=view)
-
-class ServerSelect(Select):
-    def __init__(self, user):
-        options = [discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
-        super().__init__(placeholder="Wybierz serwer", min_values=1, max_values=1, options=options)
-        self.user = user
-
-    async def callback(self, interaction: discord.Interaction):
-        server = self.values[0]
-        view = View()
-        view.add_item(ModeSelect(self.user, server))
-        await interaction.response.edit_message(content=f"Wybrano serwer: {server}\nTeraz wybierz tryb:", view=view)
+        # Automatyczne zamknięcie po godzinie (opcjonalne, możesz usunąć jeśli chcesz)
+        async def auto_close():
+            await asyncio.sleep(3600)
+            if ticket_channel and ticket_channel in guild.text_channels:
+                await archive_and_close(ticket_channel, f"Automatyczne zamknięcie ticketu po 1 godzinie")
+        bot.loop.create_task(auto_close())
 
 class MenuView(View):
-    def __init__(self, user, channel):
+    def __init__(self, member, channel):
         super().__init__(timeout=None)
-        self.user = user
+        self.member = member
         self.channel = channel
-        self.add_item(ServerSelect(user))
+        self.selected_server = None
+        self.selected_mode = None
+        self.selected_items = []
 
-# ---------------------------------
-# KOMENDY I EVENTY
-# ---------------------------------
+        self.server_select = Select(
+            placeholder="Wybierz serwer",
+            options=[discord.SelectOption(label=srv) for srv in SERVER_OPTIONS.keys()],
+            custom_id="server_select"
+        )
+        self.server_select.callback = self.server_callback
+        self.add_item(self.server_select)
 
-@bot.event
-async def on_ready():
-    print(f"Bot zalogowany jako {bot.user}")
+        # Dodajemy przycisk do zamknięcia ticketa
+        self.close_button = Button(label="Zamknij ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
+        self.close_button.callback = self.close_ticket_callback
+        self.add_item(self.close_button)
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def panel(ctx):
-    """Wyświetla panel weryfikacji i otwarcia ticketu"""
-    embed = discord.Embed(title="Panel", description="Weryfikacja i otwarcie ticketu", color=discord.Color.blurple())
-    view = View()
-    view.add_item(VerifyButton())
-    view.add_item(OpenTicketButton())
-    await ctx.send(embed=embed, view=view)
+    async def server_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
 
-bot.run(os.getenv("TOKEN"))
+        self.selected_server = interaction.data['values'][0]
+        self.selected_mode = None
+        self.selected_items = []
+
+        modes = SERVER_OPTIONS.get(self.selected_server, {})
+        self.mode_select = Select(
+            placeholder="Wybierz tryb",
+            options=[discord.SelectOption(label=mode) for mode in modes.keys()],
+            custom_id="mode_select"
+        )
+        self.mode_select.callback = self.mode_callback
+
+        self.clear_items()
+        self.add_item(self.server_select)
+        self.add_item(self.mode_select)
+        self.add_item(self.close_button)
+
+        await interaction.response.edit_message(content=None, view=self)
+
+    async def mode_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
+
+        self.selected_mode = interaction.data['values'][0]
+        self.selected_items = []
+
+        items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
+        self.item_select = Select(
+            placeholder="Wybierz item(y)",
+            options=[discord.SelectOption(label=item) for item in items],
+            custom_id="item_select",
+            min_values=1,
+            max_values=len(items)
+        )
+        self.item_select.callback = self.item_callback
+
+        self.clear_items()
+        self.add_item(self.server_select)
+        self.add_item(self.mode_select)
+        self.add_item(self.item_select)
+        self.add_item(self.close_button)
+
+        await interaction.response.edit_message(content=None, view=self)
+
+    async def item_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
+
+        self.selected_items = interaction.data['values']
+        await interaction.response.send_message(
+            f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
+            ephemeral=True
+        )
+
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            embed = discord.Embed(
+                title="📥 Nowy wybór w tickecie",
+                description=f"**Użytkownik:** {interaction.user.mention}\n"
+                            f"**Serwer:** {self.selected_server}\n"
+                            f"**Tryb:** {self.selected_mode}\n"
+                            f"**Itemy:** {', '.join(self.selected_items)}",
+                color=discord.Color.gold(),
+                timestamp=datetime.utcnow()
+            )
+            await log_channel.send(embed=embed)
+
+    async def close_ticket_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
+            return
+        # Potwierdzenie zamknięcia - prosty widok z przyciskami
+        view = ConfirmCloseView(self.channel, self.member)
+        await interaction.response.send_message("Czy na pewno chcesz zamknąć ticket?", view=view, ephemeral=True)
+
+class ConfirmCloseView(View):
+    def __init__(self, channel, member):
+        super().__init__(timeout=60)
+        self.channel = channel
+        self.member = member
+
+    @discord.ui.button(label="Tak, zamknij", style=discord.ButtonStyle.red)
+    async def confirm(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        await archive_and_close(self.channel, f"Ticket zamknięty przez {interaction.user}")
+        await interaction.followup.send("Ticket został zamknięty.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Anuluj", style=discord.ButtonStyle.grey)
+    async def cancel(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz anulować.", ephemeral=True)
+            return
+        await interaction.response.send_message("Zamknięcie ticketu anulowane.", ephemeral=True)
+        self.stop()
+
+async def archive_and_close(channel: discord.TextChannel, reason: str):
+    # Pobieranie wszystkich wiadomości
+    messages = []
+    async for msg in channel.history(limit=None, oldest_first=True):
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        author = msg.author.name
+        content = msg.content
+        messages.append(f"[{timestamp}] {author}: {content}")
+
+    # Tworzenie pliku tekstowego
+    filename = f"ticket-{channel.name}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("\n".join(messages))
+
+    guild = channel.guild
+    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        # Wysyłanie pliku do kanału logów
+        await log_channel.send(f"📁 Archiwum ticketu `{channel.name}`. Powód: {reason}", file=discord.File(filename))
+
+    # Usuwanie pliku lokalnie
+    os.remove(filename)
+
+    # Usuwanie kanału ticketu
+    await channel.delete(reason=reason)
+
+bot.run(os.getenv("DISCORD_TOKEN"))
