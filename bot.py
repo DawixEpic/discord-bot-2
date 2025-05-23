@@ -17,6 +17,9 @@ TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 REVIEW_CHANNEL_ID = 1375528888586731762
 
+# Słownik przechowujący użytkowników, którzy mogą wystawić ocenę (mają zrealizowany ticket)
+allowed_to_review = set()
+
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
         "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Shulker S2", "Shulker totemów", "1k$"],
@@ -36,9 +39,6 @@ SERVER_OPTIONS = {
     }
 }
 
-# Słownik przechowujący czy użytkownik może wystawić ocenę
-user_review_status = {}
-
 class VerifyButton(Button):
     def __init__(self):
         super().__init__(label="✅ Zweryfikuj", style=discord.ButtonStyle.success)
@@ -56,14 +56,6 @@ class OpenTicketButton(Button):
         super().__init__(label="🎟️ Otwórz ticket", style=discord.ButtonStyle.primary)
 
     async def callback(self, interaction: discord.Interaction):
-        # Sprawdzamy czy użytkownik może otworzyć nowy ticket
-        if user_review_status.get(interaction.user.id, True) is False:
-            await interaction.response.send_message(
-                "❌ Nie możesz otworzyć nowego ticketu, dopóki nie wystawisz oceny za poprzedni zrealizowany ticket.",
-                ephemeral=True
-            )
-            return
-
         guild = interaction.guild
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
@@ -83,9 +75,6 @@ class OpenTicketButton(Button):
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
         ticket_id = ticket_channel.id
-
-        # Po utworzeniu ticketu blokujemy możliwość oceny (bo ticket jest otwarty)
-        user_review_status[interaction.user.id] = False
 
         await ticket_channel.send(
             f"{interaction.user.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
@@ -122,7 +111,41 @@ class MarkDoneButton(Button):
         self.order_desc = order_desc
 
     async def callback(self, interaction: discord.Interaction):
-        # Wysyłamy embed z oceną do kanału ocen
+        # Dodajemy użytkownika do listy allowed_to_review
+        allowed_to_review.add(self.user_id)
+
+        review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
+        if not review_channel:
+            await interaction.response.send_message("❌ Kanał ocen nie został znaleziony.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="📥 Zamówienie zrealizowane",
+            description=f"Użytkownik **{self.user_name}** ma teraz możliwość wystawienia oceny.",
+            color=discord.Color.green(),
+            timestamp=datetime.utcnow()
+        )
+        await review_channel.send(embed=embed)
+
+        await interaction.response.send_message("✅ Zamówienie oznaczone jako zrealizowane.\nUżytkownik może teraz wystawić ocenę.", ephemeral=True)
+        await interaction.message.delete()
+
+class ReviewSelect(Select):
+    def __init__(self, user_name, order_desc, date_str):
+        options = [
+            discord.SelectOption(label="⭐", description="Ocena 1", value="1"),
+            discord.SelectOption(label="⭐⭐", description="Ocena 2", value="2"),
+            discord.SelectOption(label="⭐⭐⭐", description="Ocena 3", value="3"),
+            discord.SelectOption(label="⭐⭐⭐⭐", description="Ocena 4", value="4"),
+            discord.SelectOption(label="⭐⭐⭐⭐⭐", description="Ocena 5", value="5"),
+        ]
+        super().__init__(placeholder="Wybierz ocenę", options=options, min_values=1, max_values=1)
+        self.user_name = user_name
+        self.order_desc = order_desc
+        self.date_str = date_str
+
+    async def callback(self, interaction: discord.Interaction):
+        rating = self.values[0]
         review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
         if not review_channel:
             await interaction.response.send_message("❌ Kanał ocen nie został znaleziony.", ephemeral=True)
@@ -130,18 +153,26 @@ class MarkDoneButton(Button):
 
         embed = discord.Embed(
             title="📝 Nowa ocena zamówienia",
-            color=discord.Color.green(),
+            color=discord.Color.blue(),
             timestamp=datetime.utcnow()
         )
         embed.add_field(name="Użytkownik", value=self.user_name, inline=False)
         embed.add_field(name="Data zamówienia", value=self.date_str, inline=False)
         embed.add_field(name="Zamówienie", value=self.order_desc, inline=False)
+        embed.add_field(name="Ocena", value=rating + " / 5", inline=False)
 
         await review_channel.send(embed=embed)
-        user_review_status[self.user_id] = True  # Odblokuj możliwość wystawienia oceny
+        await interaction.response.send_message(f"✅ Dziękujemy za ocenę {rating}!", ephemeral=True)
 
-        await interaction.message.delete()
-        await interaction.response.send_message("✅ Zamówienie oznaczone jako zrealizowane. Możesz teraz wystawić ocenę.", ephemeral=True)
+        # Usuwamy użytkownika z allowed_to_review, aby musiał mieć kolejny zrealizowany ticket, żeby ocenić ponownie
+        for user_id in allowed_to_review.copy():
+            if interaction.user.id == user_id:
+                allowed_to_review.remove(user_id)
+
+class ReviewView(View):
+    def __init__(self, user_name, order_desc, date_str):
+        super().__init__(timeout=60)
+        self.add_item(ReviewSelect(user_name, order_desc, date_str))
 
 class MenuView(View):
     def __init__(self, member, channel):
@@ -174,99 +205,74 @@ class MenuView(View):
         )
         self.mode_select.callback = self.mode_callback
 
-        # Usuwamy stare selecty poza close ticketem i dodajemy tryb
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(CloseTicketButton(self.channel, self.member.id))
-
         await interaction.response.edit_message(view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
         self.selected_mode = interaction.data['values'][0]
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
 
-        self.item_select = Select(
+        self.items_select = Select(
             placeholder="Wybierz itemy",
             options=[discord.SelectOption(label=item) for item in items],
-            max_values=len(items),
-            custom_id="item_select"
+            custom_id="items_select",
+            min_values=1,
+            max_values=len(items)
         )
-        self.item_select.callback = self.item_callback
+        self.items_select.callback = self.items_callback
 
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
-        self.add_item(self.item_select)
+        self.add_item(self.items_select)
         self.add_item(CloseTicketButton(self.channel, self.member.id))
-
         await interaction.response.edit_message(view=self)
 
-    async def item_callback(self, interaction: discord.Interaction):
+    async def items_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
-        description = f"Serwer: {self.selected_server}\nTryb: {self.selected_mode}\nItemy: {', '.join(self.selected_items)}"
+        order_desc = ', '.join(self.selected_items)
+        date_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
         embed = discord.Embed(
-            title=f"Nowe zamówienie od {self.member.display_name}",
-            description=description,
-            color=discord.Color.blue(),
+            title="🛒 Podsumowanie zamówienia",
+            description=f"**Serwer:** {self.selected_server}\n**Tryb:** {self.selected_mode}\n**Itemy:** {order_desc}",
+            color=discord.Color.gold(),
             timestamp=datetime.utcnow()
         )
-        embed.set_footer(text=f"User ID: {self.member.id}")
+        embed.set_footer(text=f"Ticket ID: {self.channel.id}")
+        await self.channel.send(embed=embed)
 
+        # Wyślij wiadomość do kanału logów z przyciskiem "Zrealizowane"
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if not log_channel:
-            await interaction.response.send_message("❌ Kanał logów nie został znaleziony.", ephemeral=True)
-            return
+        if log_channel:
+            done_button = MarkDoneButton(interaction.user.name, interaction.user.id, date_str, order_desc)
+            await log_channel.send(
+                content=f"Zamówienie od {interaction.user.mention} ({interaction.user.id})",
+                embed=embed,
+                view=View().add_item(done_button)
+            )
 
-        view = View()
-        view.add_item(MarkDoneButton(self.member.display_name, self.member.id, datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"), description))
+        await interaction.response.send_message("✅ Zamówienie wysłane! Poczekaj na realizację.", ephemeral=True)
 
-        await log_channel.send(embed=embed, view=view)
-
-        await interaction.response.send_message("✅ Zamówienie zostało wysłane do realizacji.", ephemeral=True)
-        # Usuwamy menu w tickecie po złożeniu zamówienia, żeby nie było wielokrotnych zamówień
-        self.clear_items()
-        self.add_item(CloseTicketButton(self.channel, self.member.id))
-        await interaction.message.edit(view=self)
-
-@bot.command()
-async def ocena(ctx, *, text: str):
-    if user_review_status.get(ctx.author.id, True) is False:
-        await ctx.send("❌ Nie możesz jeszcze wystawić oceny. Poczekaj, aż ticket zostanie zrealizowany.")
-        return
-    
-    review_channel = ctx.guild.get_channel(REVIEW_CHANNEL_ID)
-    if not review_channel:
-        await ctx.send("❌ Kanał ocen nie jest dostępny.")
+# Komenda oceny — wyświetla menu wyboru oceny, tylko jeśli użytkownik ma prawo ocenić
+@bot.command(name="ocena")
+async def ocena(ctx):
+    user_id = ctx.author.id
+    if user_id not in allowed_to_review:
+        await ctx.reply("❌ Nie możesz teraz wystawić oceny. Poczekaj, aż Twój ticket zostanie zrealizowany.", mention_author=True)
         return
 
-    embed = discord.Embed(
-        title="📝 Ocena użytkownika",
-        description=text,
-        color=discord.Color.blue(),
-        timestamp=datetime.utcnow()
-    )
-    embed.set_author(name=ctx.author.name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-    await review_channel.send(embed=embed)
+    # Tutaj w prawdziwym systemie trzeba by było zapamiętać, co dokładnie użytkownik zamówił i kiedy.
+    # Dla uproszczenia zakładam, że mamy takie info:
+    order_desc = "Przykładowe zamówienie"
+    date_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Po ocenie blokujemy możliwość kolejnej oceny do momentu zrealizowania następnego ticketa
-    user_review_status[ctx.author.id] = False
+    view = ReviewView(ctx.author.name, order_desc, date_str)
+    await ctx.send("Wybierz ocenę dla swojego zamówienia:", view=view)
 
-    await ctx.send("✅ Dziękujemy za ocenę!")
-
-@bot.event
-async def on_ready():
-    print(f'Bot zalogowany jako {bot.user}!')
-
-@bot.command()
-async def start(ctx):
-    # Komenda do wysłania wiadomości z weryfikacją i otwarciem ticketu
-    verify_button = VerifyButton()
-    ticket_button = OpenTicketButton()
-    view = View()
-    view.add_item(verify_button)
-    view.add_item(ticket_button)
-    await ctx.send("Kliknij przycisk, aby się zweryfikować lub otworzyć ticket.", view=view)
-
-bot.run(os.getenv('TOKEN'))
+# Uruchomienie bota
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+bot.run(TOKEN)
