@@ -75,8 +75,6 @@ async def on_raw_reaction_add(payload):
         return
 
     guild = bot.get_guild(payload.guild_id)
-    if not guild:
-        return
 
     if payload.message_id == verification_message_id and str(payload.emoji) == "✅":
         role = guild.get_role(ROLE_ID)
@@ -88,12 +86,12 @@ async def on_raw_reaction_add(payload):
     elif payload.message_id == ticket_message_id and str(payload.emoji) == "🎟️":
         category = guild.get_channel(TICKET_CATEGORY_ID)
         if not isinstance(category, discord.CategoryChannel):
-            await guild.get_channel(payload.channel_id).send("❌ Błąd: Nie znaleziono kategorii dla ticketów.")
             return
 
         channel_name = f"ticket-{payload.member.name}".lower()
-        if discord.utils.get(guild.text_channels, name=channel_name):
-            return  # Ticket już istnieje
+        existing = discord.utils.get(guild.channels, name=channel_name)
+        if existing:
+            return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -102,32 +100,15 @@ async def on_raw_reaction_add(payload):
         }
 
         ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+        await ticket_channel.send(f"{payload.member.mention}, wybierz co chcesz kupić:", view=MenuView(payload.member, ticket_channel))
 
-        embed = discord.Embed(
-            title=f"🎫 Ticket #{ticket_channel.id}",
-            description=f"{payload.member.mention}, wybierz co chcesz kupić z menu poniżej.",
-            color=discord.Color.orange(),
-            timestamp=datetime.utcnow()
-        )
-        await ticket_channel.send(embed=embed, view=MenuView(payload.member, ticket_channel))
+        # Automatyczne zamknięcie po godzinie (opcjonalne, możesz usunąć jeśli chcesz)
+        async def auto_close():
+            await asyncio.sleep(3600)
+            if ticket_channel and ticket_channel in guild.text_channels:
+                await archive_and_close(ticket_channel, f"Automatyczne zamknięcie ticketu po 1 godzinie")
+        bot.loop.create_task(auto_close())
 
-        # Auto-close po 1h
-        await asyncio.sleep(3600)
-        if ticket_channel and ticket_channel in guild.text_channels:
-            await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu")
-
-# Przycisk zamykania ticketa
-class CloseButton(Button):
-    def __init__(self, channel):
-        super().__init__(label="Zamknij ticket", style=discord.ButtonStyle.danger)
-        self.channel = channel
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_message("🔒 Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
-        await asyncio.sleep(5)
-        await self.channel.delete(reason="Zamknięty przyciskiem")
-
-# Menu wyboru
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
@@ -144,9 +125,17 @@ class MenuView(View):
         )
         self.server_select.callback = self.server_callback
         self.add_item(self.server_select)
-        self.add_item(CloseButton(channel))  # Dodaj przycisk zamknięcia
+
+        # Dodajemy przycisk do zamknięcia ticketa
+        self.close_button = Button(label="Zamknij ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
+        self.close_button.callback = self.close_ticket_callback
+        self.add_item(self.close_button)
 
     async def server_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
+
         self.selected_server = interaction.data['values'][0]
         self.selected_mode = None
         self.selected_items = []
@@ -162,11 +151,15 @@ class MenuView(View):
         self.clear_items()
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
-        self.add_item(CloseButton(self.channel))
+        self.add_item(self.close_button)
 
-        await interaction.response.edit_message(view=self)
+        await interaction.response.edit_message(content=None, view=self)
 
     async def mode_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
+
         self.selected_mode = interaction.data['values'][0]
         self.selected_items = []
 
@@ -184,14 +177,18 @@ class MenuView(View):
         self.add_item(self.server_select)
         self.add_item(self.mode_select)
         self.add_item(self.item_select)
-        self.add_item(CloseButton(self.channel))
+        self.add_item(self.close_button)
 
-        await interaction.response.edit_message(view=self)
+        await interaction.response.edit_message(content=None, view=self)
 
     async def item_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz korzystać z tego menu.", ephemeral=True)
+            return
+
         self.selected_items = interaction.data['values']
         await interaction.response.send_message(
-            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}** → `{', '.join(self.selected_items)}`",
+            f"Wybrałeś: Serwer: {self.selected_server}, Tryb: {self.selected_mode}, Itemy: {', '.join(self.selected_items)}",
             ephemeral=True
         )
 
@@ -207,5 +204,63 @@ class MenuView(View):
                 timestamp=datetime.utcnow()
             )
             await log_channel.send(embed=embed)
+
+    async def close_ticket_callback(self, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
+            return
+        # Potwierdzenie zamknięcia - prosty widok z przyciskami
+        view = ConfirmCloseView(self.channel, self.member)
+        await interaction.response.send_message("Czy na pewno chcesz zamknąć ticket?", view=view, ephemeral=True)
+
+class ConfirmCloseView(View):
+    def __init__(self, channel, member):
+        super().__init__(timeout=60)
+        self.channel = channel
+        self.member = member
+
+    @discord.ui.button(label="Tak, zamknij", style=discord.ButtonStyle.red)
+    async def confirm(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz zamknąć cudzego ticketu.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        await archive_and_close(self.channel, f"Ticket zamknięty przez {interaction.user}")
+        await interaction.followup.send("Ticket został zamknięty.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Anuluj", style=discord.ButtonStyle.grey)
+    async def cancel(self, button: Button, interaction: discord.Interaction):
+        if interaction.user != self.member:
+            await interaction.response.send_message("Nie możesz anulować.", ephemeral=True)
+            return
+        await interaction.response.send_message("Zamknięcie ticketu anulowane.", ephemeral=True)
+        self.stop()
+
+async def archive_and_close(channel: discord.TextChannel, reason: str):
+    # Pobieranie wszystkich wiadomości
+    messages = []
+    async for msg in channel.history(limit=None, oldest_first=True):
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        author = msg.author.name
+        content = msg.content
+        messages.append(f"[{timestamp}] {author}: {content}")
+
+    # Tworzenie pliku tekstowego
+    filename = f"ticket-{channel.name}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("\n".join(messages))
+
+    guild = channel.guild
+    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        # Wysyłanie pliku do kanału logów
+        await log_channel.send(f"📁 Archiwum ticketu `{channel.name}`. Powód: {reason}", file=discord.File(filename))
+
+    # Usuwanie pliku lokalnie
+    os.remove(filename)
+
+    # Usuwanie kanału ticketu
+    await channel.delete(reason=reason)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
