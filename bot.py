@@ -12,12 +12,13 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# --- ID-y i konfiguracje ---
 ROLE_ID = 1373275307150278686
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 REVIEW_CHANNEL_ID = 1375528888586731762
 
-# Słownik przechowujący użytkowników, którzy mogą wystawić ocenę (mają zrealizowany ticket)
+# Przechowuje ID użytkowników, którzy mogą wystawić ocenę (czyli mają zrealizowany ticket)
 allowed_to_review = set()
 
 SERVER_OPTIONS = {
@@ -38,6 +39,8 @@ SERVER_OPTIONS = {
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
+
+# --- BUTTONY i SELECTY ---
 
 class VerifyButton(Button):
     def __init__(self):
@@ -83,6 +86,7 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
+        # Opcjonalne automatyczne zamknięcie po 1h (można usunąć jeśli nie potrzebne)
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
@@ -111,7 +115,7 @@ class MarkDoneButton(Button):
         self.order_desc = order_desc
 
     async def callback(self, interaction: discord.Interaction):
-        # Dodajemy użytkownika do listy allowed_to_review
+        # Dodaj użytkownika do listy allowed_to_review (może ocenić)
         allowed_to_review.add(self.user_id)
 
         review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
@@ -121,7 +125,7 @@ class MarkDoneButton(Button):
 
         embed = discord.Embed(
             title="📥 Zamówienie zrealizowane",
-            description=f"Użytkownik **{self.user_name}** ma teraz możliwość wystawienia oceny.",
+            description=f"Użytkownik **{self.user_name}** może teraz wystawić ocenę.",
             color=discord.Color.green(),
             timestamp=datetime.utcnow()
         )
@@ -159,15 +163,13 @@ class ReviewSelect(Select):
         embed.add_field(name="Użytkownik", value=self.user_name, inline=False)
         embed.add_field(name="Data zamówienia", value=self.date_str, inline=False)
         embed.add_field(name="Zamówienie", value=self.order_desc, inline=False)
-        embed.add_field(name="Ocena", value=rating + " / 5", inline=False)
+        embed.add_field(name="Ocena", value=f"{rating} / 5", inline=False)
 
         await review_channel.send(embed=embed)
         await interaction.response.send_message(f"✅ Dziękujemy za ocenę {rating}!", ephemeral=True)
 
-        # Usuwamy użytkownika z allowed_to_review, aby musiał mieć kolejny zrealizowany ticket, żeby ocenić ponownie
-        for user_id in allowed_to_review.copy():
-            if interaction.user.id == user_id:
-                allowed_to_review.remove(user_id)
+        # Usuń użytkownika z allowed_to_review, by wymagać kolejnego zrealizowanego ticketu na kolejną ocenę
+        allowed_to_review.discard(interaction.user.id)
 
 class ReviewView(View):
     def __init__(self, user_name, order_desc, date_str):
@@ -249,15 +251,55 @@ class MenuView(View):
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             done_button = MarkDoneButton(interaction.user.name, interaction.user.id, date_str, order_desc)
+            view = View()
+            view.add_item(done_button)
             await log_channel.send(
                 content=f"Zamówienie od {interaction.user.mention} ({interaction.user.id})",
                 embed=embed,
-                view=View().add_item(done_button)
+                view=view
             )
 
         await interaction.response.send_message("✅ Zamówienie wysłane! Poczekaj na realizację.", ephemeral=True)
 
-# Komenda oceny — wyświetla menu wyboru oceny, tylko jeśli użytkownik ma prawo ocenić
+# --- KOMENDY ---
+
+@bot.command(name="verify")
+async def verify(ctx):
+    role = ctx.guild.get_role(ROLE_ID)
+    if not role:
+        await ctx.reply("❌ Rola weryfikacyjna nie została znaleziona.")
+        return
+    await ctx.author.add_roles(role)
+    await ctx.reply("✅ Zweryfikowano pomyślnie!")
+
+@bot.command(name="open_ticket")
+async def open_ticket(ctx):
+    guild = ctx.guild
+    category = guild.get_channel(TICKET_CATEGORY_ID)
+    if not isinstance(category, discord.CategoryChannel):
+        await ctx.reply("❌ Nie znaleziono kategorii dla ticketów.")
+        return
+
+    channel_name = f"ticket-{ctx.author.name}".lower()
+    if discord.utils.get(guild.channels, name=channel_name):
+        await ctx.reply("❗ Masz już otwarty ticket.")
+        return
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+
+    ticket_channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
+    ticket_id = ticket_channel.id
+
+    await ticket_channel.send(
+        f"{ctx.author.mention}, witaj! Wybierz z poniższego menu co chcesz kupić.\n📄 **ID Ticketa:** `{ticket_id}`",
+        view=MenuView(ctx.author, ticket_channel)
+    )
+    await ctx.reply("✅ Ticket został utworzony!")
+
 @bot.command(name="ocena")
 async def ocena(ctx):
     user_id = ctx.author.id
@@ -265,14 +307,20 @@ async def ocena(ctx):
         await ctx.reply("❌ Nie możesz teraz wystawić oceny. Poczekaj, aż Twój ticket zostanie zrealizowany.", mention_author=True)
         return
 
-    # Tutaj w prawdziwym systemie trzeba by było zapamiętać, co dokładnie użytkownik zamówił i kiedy.
-    # Dla uproszczenia zakładam, że mamy takie info:
+    # Tu trzeba by realnie powiązać zamówienie i datę z użytkownikiem, ale na razie daję przykładowe dane:
     order_desc = "Przykładowe zamówienie"
     date_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     view = ReviewView(ctx.author.name, order_desc, date_str)
     await ctx.send("Wybierz ocenę dla swojego zamówienia:", view=view)
 
-# Uruchomienie bota
+# --- EVENTY ---
+
+@bot.event
+async def on_ready():
+    print(f"Bot zalogowany jako {bot.user}")
+
+# --- URUCHOMIENIE BOTA ---
+
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 bot.run(TOKEN)
