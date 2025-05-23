@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
@@ -234,6 +233,9 @@ class RealizeButton(Button):
         if self.user_id in rated_users:
             del rated_users[self.user_id]  # reset oceny, może ocenić teraz
 
+        # Usuń wiadomość z logów (czyli tę z tym przyciskiem)
+        await interaction.message.delete()
+
         await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany! Możesz teraz wystawić ocenę.", ephemeral=True)
 
         # Wyślij użytkownikowi menu ocen na DM lub na kanale ocen
@@ -250,47 +252,43 @@ class RealizeButtonView(View):
         super().__init__(timeout=None)
         self.add_item(RealizeButton(user_id))
 
-# --- MENU OCEN ---
+# --- MENU OCEN (gwiazdki) ---
 class RatingView(View):
     def __init__(self, user_id):
         super().__init__(timeout=300)  # 5 minut na ocenę
         self.user_id = user_id
-        self.add_item(RatingSelect(user_id))
-
-class RatingSelect(Select):
-    def __init__(self, user_id):
-        options = [
-            discord.SelectOption(label="⭐ 1", description="Ocena 1 gwiazdka", value="1"),
-            discord.SelectOption(label="⭐⭐ 2", description="Ocena 2 gwiazdki", value="2"),
-            discord.SelectOption(label="⭐⭐⭐ 3", description="Ocena 3 gwiazdki", value="3"),
-            discord.SelectOption(label="⭐⭐⭐⭐ 4", description="Ocena 4 gwiazdki", value="4"),
-            discord.SelectOption(label="⭐⭐⭐⭐⭐ 5", description="Ocena 5 gwiazdek", value="5"),
-        ]
-        super().__init__(placeholder="Wybierz ocenę", min_values=1, max_values=1, options=options, custom_id="rating_select")
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ Nie możesz ocenić za innego użytkownika.", ephemeral=True)
-            return
-
-        if rated_users.get(self.user_id, False):
-            await interaction.response.send_message("❌ Już wystawiłeś ocenę dla tego ticketa.", ephemeral=True)
-            return
-
-        rated_users[self.user_id] = True
-        score = int(self.values[0])
-
-        embed = discord.Embed(
-            title="📝 Nowa ocena ticketa",
-            description=f"**Użytkownik:** {interaction.user.mention}\n**Ocena:** {'⭐' * score} ({score}/5)",
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
+        self.rating_select = Select(
+            placeholder="Wybierz ocenę (1-5)",
+            options=[discord.SelectOption(label=str(i), description=f"{i} gwiazdek", value=str(i)) for i in range(1,6)],
+            custom_id="rating_select"
         )
+        self.rating_select.callback = self.rating_callback
+        self.add_item(self.rating_select)
+
+    async def rating_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ To nie twoja ocena.", ephemeral=True)
+            return
+
+        if self.user_id in rated_users:
+            await interaction.response.send_message("❌ Już wystawiłeś ocenę.", ephemeral=True)
+            return
+
+        rating = int(interaction.data['values'][0])
+        rated_users[self.user_id] = True
+
+        # Wyślij embed z oceną do kanału ocen
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
+            embed = discord.Embed(
+                title="⭐ Nowa ocena ticketu",
+                description=f"**Użytkownik:** {interaction.user.mention}\n**Ocena:** {rating} / 5",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
             await rating_channel.send(embed=embed)
 
-        await interaction.response.send_message(f"Dziękujemy za ocenę: {'⭐' * score}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Dziękujemy za ocenę: {rating} ⭐", ephemeral=True)
+        self.stop()
 
 bot.run(os.getenv("DISCORD_TOKEN"))
