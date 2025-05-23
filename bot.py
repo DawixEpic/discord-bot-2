@@ -37,9 +37,11 @@ SERVER_OPTIONS = {
     }
 }
 
+
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
+
 
 @bot.command()
 async def weryfikacja(ctx):
@@ -51,6 +53,7 @@ async def weryfikacja(ctx):
     view = View()
     view.add_item(VerifyButton())
     await ctx.send(embed=embed, view=view)
+
 
 class VerifyButton(Button):
     def __init__(self):
@@ -64,8 +67,19 @@ class VerifyButton(Button):
         else:
             await interaction.response.send_message("❌ Rola nie została znaleziona.", ephemeral=True)
 
+
 @bot.command()
 async def ticket(ctx):
+    category = ctx.guild.get_channel(TICKET_CATEGORY_ID)
+    if not category:
+        await ctx.send("❌ Nie znaleziono kategorii ticketów.")
+        return
+
+    existing = discord.utils.get(ctx.guild.channels, name=f"ticket-{ctx.author.name}".lower())
+    if existing:
+        await ctx.send("❗ Masz już otwarty ticket!")
+        return
+
     embed = discord.Embed(
         title="🎟️ System ticketów",
         description="Kliknij poniżej, aby otworzyć ticket i wybrać co chcesz kupić.",
@@ -74,6 +88,7 @@ async def ticket(ctx):
     view = View()
     view.add_item(OpenTicketButton())
     await ctx.send(embed=embed, view=view)
+
 
 class OpenTicketButton(Button):
     def __init__(self):
@@ -107,13 +122,14 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
-        # Automatyczne usuwanie kanału po 1 godzinie
-        await asyncio.sleep(3600)
-        if ticket_channel and ticket_channel in guild.text_channels:
-            try:
+        # Automatyczne zamknięcie po 1h
+        async def auto_close():
+            await asyncio.sleep(3600)
+            if ticket_channel and ticket_channel in guild.text_channels:
                 await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
-            except:
-                pass  # jeśli kanał już usunięty
+
+        bot.loop.create_task(auto_close())
+
 
 class CloseTicketButton(Button):
     def __init__(self, channel, author_id):
@@ -128,16 +144,15 @@ class CloseTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket zostanie zamknięty za 5 sekund...", ephemeral=True)
         await asyncio.sleep(5)
-        try:
-            await self.channel.delete(reason="Zamknięty przez użytkownika")
-        except:
-            pass
+        await self.channel.delete(reason="Zamknięty przez użytkownika")
+
 
 class MenuView(View):
     def __init__(self, member, channel):
         super().__init__(timeout=None)
         self.member = member
         self.channel = channel
+
         self.selected_server = None
         self.selected_mode = None
         self.selected_items = []
@@ -149,15 +164,30 @@ class MenuView(View):
         )
         self.server_select.callback = self.server_callback
 
-        # Dodaj przycisk zamknięcia TYLKO RAZ
-        self.close_button = CloseTicketButton(channel, member.id)
+        self.mode_select = Select(
+            placeholder="Wybierz tryb",
+            options=[],
+            custom_id="mode_select",
+            disabled=True
+        )
+        self.mode_select.callback = self.mode_callback
 
-        # Dodaj na start widoku serwer i przycisk zamknięcia
+        self.item_select = Select(
+            placeholder="Wybierz itemy",
+            options=[],
+            custom_id="item_select",
+            min_values=1,
+            max_values=1,
+            disabled=True
+        )
+        self.item_select.callback = self.item_callback
+
+        # Dodajemy najpierw selekty, potem przycisk na dole
         self.add_item(self.server_select)
+        self.add_item(self.mode_select)
+        self.add_item(self.item_select)
+        self.close_button = CloseTicketButton(channel, member.id)
         self.add_item(self.close_button)
-
-        self.mode_select = None
-        self.item_select = None
 
     async def server_callback(self, interaction: discord.Interaction):
         self.selected_server = interaction.data['values'][0]
@@ -165,17 +195,15 @@ class MenuView(View):
         self.selected_items = []
 
         modes = SERVER_OPTIONS.get(self.selected_server, {})
-        self.mode_select = Select(
-            placeholder="Wybierz tryb",
-            options=[discord.SelectOption(label=mode) for mode in modes.keys()],
-            custom_id="mode_select"
-        )
-        self.mode_select.callback = self.mode_callback
+        mode_options = [discord.SelectOption(label=mode) for mode in modes.keys()]
 
-        self.clear_selects()
-        self.add_item(self.mode_select)
+        self.mode_select.options = mode_options
+        self.mode_select.disabled = False
 
-        # Nie dodajemy close_button ponownie (jest cały czas)
+        # Reset itemy
+        self.item_select.options = []
+        self.item_select.disabled = True
+        self.item_select.max_values = 1
 
         await interaction.response.edit_message(view=self)
 
@@ -184,21 +212,11 @@ class MenuView(View):
         self.selected_items = []
 
         items = SERVER_OPTIONS[self.selected_server][self.selected_mode]
-        self.item_select = Select(
-            placeholder="Wybierz itemy",
-            options=[discord.SelectOption(label=item) for item in items],
-            custom_id="item_select",
-            min_values=1,
-            max_values=len(items)
-        )
-        self.item_select.callback = self.item_callback
+        item_options = [discord.SelectOption(label=item) for item in items]
 
-        self.clear_selects()
-        self.add_item(self.server_select)
-        self.add_item(self.mode_select)
-        self.add_item(self.item_select)
-
-        # Przycisk zamknięcia pozostaje cały czas
+        self.item_select.options = item_options
+        self.item_select.disabled = False
+        self.item_select.max_values = len(items) if len(items) > 0 else 1
 
         await interaction.response.edit_message(view=self)
 
@@ -210,12 +228,6 @@ class MenuView(View):
             ephemeral=True
         )
 
-        # Opcjonalnie wyślij podsumowanie w kanale ticketa
-        await self.channel.send(
-            f"📄 **Podsumowanie wyboru:**\nSerwer: **{self.selected_server}**\nTryb: **{self.selected_mode}**\nItemy: {', '.join(self.selected_items)}"
-        )
-
-        # Logowanie do kanału logów
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -229,10 +241,5 @@ class MenuView(View):
             )
             await log_channel.send(embed=embed)
 
-    def clear_selects(self):
-        # Usuwa tylko selecty z widoku, nie przyciski
-        selects_to_remove = [item for item in self.children if isinstance(item, Select)]
-        for select in selects_to_remove:
-            self.remove_item(select)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
