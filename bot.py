@@ -213,131 +213,127 @@ class MenuView(View):
         if log_channel:
             embed = discord.Embed(
                 title="📥 Nowy wybór w tickecie",
-                description=f"**Użytkownik:** {interaction.user.mention}\n"
-                            f"**Serwer:** {self.selected_server}\n"
-                            f"**Tryb:** {self.selected_mode}\n"
-                            f"**Itemy:** {', '.join(self.selected_items)}",
-                color=discord.Color.gold(),
-                timestamp=datetime.utcnow()
+                description=(
+                    f"**Użytkownik:** {self.member.mention} (`{self.member.id}`)\n"
+                    f"**Serwer:** {self.selected_server}\n"
+                    f"**Tryb:** {self.selected_mode}\n"
+                    f"**Itemy:** {', '.join(self.selected_items)}\n"
+                    f"**Data:** {user_order_data[self.member.id]['date'].strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                ),
+                color=discord.Color.orange()
             )
-            view = RealizeButtonView(interaction.user.id)
+            view = RealizeView(self.member.id)
             await log_channel.send(embed=embed, view=view)
 
-        await interaction.response.send_message(
-            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
-            ephemeral=True
-        )
+        await interaction.response.send_message("✅ Wybrano i zalogowano w kanale logów.", ephemeral=True)
 
-# --- PRZYCISK ZREALIZUJ (w kanale logów) ---
+class RealizeView(View):
+    def __init__(self, user_id):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.add_item(RealizeButton(user_id))
+
 class RealizeButton(Button):
     def __init__(self, user_id):
         super().__init__(label="✅ Zrealizuj", style=discord.ButtonStyle.success)
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
-        # Tylko admin może zrealizować
-        if not interaction.user.guild_permissions.manage_messages:
-            await interaction.response.send_message("❌ Nie masz uprawnień do tej akcji.", ephemeral=True)
+        # Sprawdź czy osoba klikająca to admin
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Tylko administrator może zrealizować zamówienie.", ephemeral=True)
             return
 
-        # Zapamiętaj, że ticket zrealizowany
+        # Zaznacz jako zrealizowane
         realized_tickets[self.user_id] = True
 
-        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
+        # Usuń oryginalną wiadomość z logów
+        await interaction.message.delete()
 
-        # Wyślij wiadomość z prośbą o ocenę do kanału oceny
+        # Wyślij embed z prośbą o ocenę
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
-        if rating_channel:
-            # Tworzymy embed z podstawowymi danymi i pustymi ocenami
-            order = user_order_data.get(self.user_id, None)
-            if order:
-                embed = discord.Embed(
-                    title="📝 Proszę oceń swój ticket",
-                    description=(f"**Użytkownik:** <@{self.user_id}>\n"
-                                 f"**Serwer:** {order['server']}\n"
-                                 f"**Tryb:** {order['mode']}\n"
-                                 f"**Itemy:** {', '.join(order['items'])}\n"
-                                 f"**Data:** {order['date'].strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
-                                 "Kliknij gwiazdkę aby ocenić:\n"
-                                 "• Szybkość dostawy\n"
-                                 "• Przyjęcie zamówienia\n"
-                                 "• Ocena ogólna"),
-                    color=discord.Color.blue()
-                )
-                view = RatingView(self.user_id)
-                await rating_channel.send(embed=embed, view=view)
-            else:
-                await interaction.followup.send("❌ Brak danych zamówienia dla tego użytkownika.", ephemeral=True)
+        if not rating_channel:
+            await interaction.response.send_message("❌ Nie znaleziono kanału ocen.", ephemeral=True)
+            return
 
-# --- SYSTEM OCENIANIA ---
+        order = user_order_data.get(self.user_id)
+        if not order:
+            await interaction.response.send_message("❌ Brak danych zamówienia dla tego użytkownika.", ephemeral=True)
+            return
+
+        user = interaction.guild.get_member(self.user_id)
+        if not user:
+            await interaction.response.send_message("❌ Nie znaleziono użytkownika.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="📝 Prosimy o ocenę zamówienia",
+            description=(
+                f"**Użytkownik:** {user.mention}\n"
+                f"**Data zamówienia:** {order['date'].strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                f"**Serwer:** {order['server']}\n"
+                f"**Tryb:** {order['mode']}\n"
+                f"**Itemy:** {', '.join(order['items'])}"
+            ),
+            color=discord.Color.blurple()
+        )
+        view = RatingView(self.user_id)
+        await rating_channel.send(embed=embed, view=view)
+        await interaction.response.send_message("✅ Zamówienie oznaczone jako zrealizowane i prosimy o ocenę.", ephemeral=True)
+
+# --- SYSTEM OCEN ---
 class RatingView(View):
     def __init__(self, user_id):
         super().__init__(timeout=None)
         self.user_id = user_id
 
-        # Przechowujemy w view jakie oceny zostały oddane
-        if self.user_id not in user_ratings:
-            user_ratings[self.user_id] = {'speed': None, 'accept': None, 'overall': None}
+        self.speed_select = Select(
+            placeholder="Oceń szybkość dostawy (1-5)",
+            options=[discord.SelectOption(label=str(i)) for i in range(1, 6)],
+            custom_id="speed_rating"
+        )
+        self.speed_select.callback = self.speed_callback
 
-        self.speed_btn = RatingButton("speed", "Szybkość dostawy")
-        self.accept_btn = RatingButton("accept", "Przyjęcie zamówienia")
-        self.overall_btn = RatingButton("overall", "Ocena ogólna")
+        self.accept_select = Select(
+            placeholder="Oceń przyjęcie zamówienia (1-5)",
+            options=[discord.SelectOption(label=str(i)) for i in range(1, 6)],
+            custom_id="accept_rating"
+        )
+        self.accept_select.callback = self.accept_callback
 
-        self.add_item(self.speed_btn)
-        self.add_item(self.accept_btn)
-        self.add_item(self.overall_btn)
+        self.overall_select = Select(
+            placeholder="Oceń ogólnie (1-5)",
+            options=[discord.SelectOption(label=str(i)) for i in range(1, 6)],
+            custom_id="overall_rating"
+        )
+        self.overall_select.callback = self.overall_callback
 
-    async def update_message(self, interaction: discord.Interaction):
-        # Aktualizuj embed z ocenami
-        embed = interaction.message.embeds[0]
+        self.add_item(self.speed_select)
+        self.add_item(self.accept_select)
+        self.add_item(self.overall_select)
 
-        ratings = user_ratings[self.user_id]
-
-        description = (f"**Użytkownik:** <@{self.user_id}>\n"
-                       f"• Szybkość dostawy: {ratings['speed'] if ratings['speed'] is not None else '❔'}\n"
-                       f"• Przyjęcie zamówienia: {ratings['accept'] if ratings['accept'] is not None else '❔'}\n"
-                       f"• Ocena ogólna: {ratings['overall'] if ratings['overall'] is not None else '❔'}")
-
-        embed.description = description
-        await interaction.message.edit(embed=embed, view=self)
-
-class RatingButton(Button):
-    def __init__(self, category, label):
-        super().__init__(label=label, style=discord.ButtonStyle.secondary, custom_id=category)
-        self.category = category
-        self.stars = [1, 2, 3, 4, 5]
-
-    async def callback(self, interaction: discord.Interaction):
-        user_id = int(self.custom_id.split("_")[0]) if "_" in self.custom_id else interaction.message.id  # nie używamy tego tu
-        view: RatingView = self.view
-
-        # Sprawdź czy użytkownik może ocenić
-        if interaction.user.id != view.user_id:
-            await interaction.response.send_message("❌ Możesz ocenić tylko swój własny ticket.", ephemeral=True)
+    async def speed_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ Tylko właściciel zamówienia może ocenić.", ephemeral=True)
             return
+        rating = int(interaction.data['values'][0])
+        user_ratings.setdefault(self.user_id, {})['speed'] = rating
+        await interaction.response.send_message(f"✅ Oceniłeś szybkość dostawy na {rating}/5.", ephemeral=True)
 
-        # Jeśli już ocenił ten aspekt, odrzuć
-        if user_ratings[view.user_id][self.category] is not None:
-            await interaction.response.send_message(f"❗ Już oceniłeś {self.label}.", ephemeral=True)
+    async def accept_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ Tylko właściciel zamówienia może ocenić.", ephemeral=True)
             return
+        rating = int(interaction.data['values'][0])
+        user_ratings.setdefault(self.user_id, {})['accept'] = rating
+        await interaction.response.send_message(f"✅ Oceniłeś przyjęcie zamówienia na {rating}/5.", ephemeral=True)
 
-        # Zapisz ocenę (przyjmujemy ocenę = 5 bo to kliknięcie, dla uproszczenia)
-        # Możemy rozszerzyć na przyciski z 1-5 gwiazdkami osobno, ale teraz uproszczenie:
-        # Dodajmy szybkie pytanie o ocenę (1-5) lub pojedynczy przycisk - tu rozbudujemy na prosty wybór
-        await interaction.response.send_message(f"Proszę wpisz ocenę (1-5) dla {self.label}:", ephemeral=True)
-
-        def check(m):
-            return m.author == interaction.user and m.channel == interaction.channel and m.content.isdigit() and 1 <= int(m.content) <= 5
-
-        try:
-            msg = await bot.wait_for('message', check=check, timeout=30)
-            rating = int(msg.content)
-            user_ratings[view.user_id][self.category] = rating
-            await interaction.followup.send(f"Dziękujemy za ocenę {rating} dla {self.label}!", ephemeral=True)
-        except asyncio.TimeoutError:
-            await interaction.followup.send("❌ Przekroczono czas na podanie oceny.", ephemeral=True)
+    async def overall_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ Tylko właściciel zamówienia może ocenić.", ephemeral=True)
             return
+        rating = int(interaction.data['values'][0])
+        user_ratings.setdefault(self.user_id, {})['overall'] = rating
+        await interaction.response.send_message(f"✅ Oceniłeś ogólnie na {rating}/5.", ephemeral=True)
 
-        await view.update_message(interaction)
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("TOKEN"))
