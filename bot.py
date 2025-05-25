@@ -37,10 +37,7 @@ SERVER_OPTIONS = {
     }
 }
 
-# Przechowuje status ticketów zrealizowanych: {user_id: bool}
 realized_tickets = {}
-
-# Przechowuje ocenione tickety: {user_id: bool}
 rated_users = {}
 
 @bot.event
@@ -55,7 +52,7 @@ async def weryfikacja(ctx):
         description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.",
         color=discord.Color.blue()
     )
-    view = View()
+    view = View(timeout=600)
     view.add_item(VerifyButton())
     await ctx.send(embed=embed, view=view)
 
@@ -79,7 +76,7 @@ async def ticket(ctx):
         description="Kliknij poniżej, aby otworzyć ticket i wybrać co chcesz kupić.",
         color=discord.Color.green()
     )
-    view = View()
+    view = View(timeout=600)
     view.add_item(OpenTicketButton())
     await ctx.send(embed=embed, view=view)
 
@@ -95,9 +92,11 @@ class OpenTicketButton(Button):
             return
 
         channel_name = f"ticket-{interaction.user.name}".lower()
-        if discord.utils.get(guild.channels, name=channel_name):
-            await interaction.response.send_message("❗ Masz już otwarty ticket.", ephemeral=True)
-            return
+        # Ograniczenie max 1 ticket na użytkownika
+        for ch in guild.text_channels:
+            if ch.name == channel_name:
+                await interaction.response.send_message("❗ Masz już otwarty ticket.", ephemeral=True)
+                return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -115,7 +114,7 @@ class OpenTicketButton(Button):
 
         await interaction.response.send_message("✅ Ticket został utworzony!", ephemeral=True)
 
-        # Ticket automatycznie zamyka się po 1h (możesz zmienić)
+        # Automatyczne zamknięcie po 1h
         await asyncio.sleep(3600)
         if ticket_channel and ticket_channel in guild.text_channels:
             await ticket_channel.delete(reason="Automatyczne zamknięcie ticketu po 1h")
@@ -138,7 +137,7 @@ class CloseTicketButton(Button):
 # --- MENU WYBORU SERWER -> TRYB -> ITEMY ---
 class MenuView(View):
     def __init__(self, member, channel):
-        super().__init__(timeout=None)
+        super().__init__(timeout=600)  # timeout 10 minut
         self.member = member
         self.channel = channel
         self.selected_server = None
@@ -197,7 +196,6 @@ class MenuView(View):
     async def item_callback(self, interaction: discord.Interaction):
         self.selected_items = interaction.data['values']
 
-        # Zaloguj wybór w kanale LOGÓW z przyciskiem ZREALIZUJ
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(
@@ -224,24 +222,25 @@ class RealizeButton(Button):
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
-        # Tylko admin może zrealizować
         if not interaction.user.guild_permissions.manage_messages:
             await interaction.response.send_message("❌ Nie masz uprawnień do tej akcji.", ephemeral=True)
             return
 
-        # Zapamiętaj, że ticket zrealizowany
         realized_tickets[self.user_id] = True
 
         await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
 
-        # Wyślij wiadomość z prośbą o ocenę do kanału oceny
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
             view = StarRatingView(self.user_id)
             await rating_channel.send(f"<@{self.user_id}> Proszę oceń swój ticket:", view=view)
 
-        # Usuń wiadomość z przyciskiem (log)
         await interaction.message.delete()
+
+class RealizeButtonView(View):
+    def __init__(self, user_id):
+        super().__init__(timeout=600)  # timeout 10 minut
+        self.add_item(RealizeButton(user_id))
 
 # --- SYSTEM OCENY Z PRZYCISKAMI GWIAZDEK ---
 
@@ -260,18 +259,17 @@ class StarButton(Button):
             return
 
         rated_users[self.user_id] = True
-        # Tutaj możesz zapisać ocenę do bazy lub pliku
         rating = self.rating
 
-        await interaction.response.edit_message(content=f"✅ Dziękujemy za ocenę: {rating} ⭐", view=None)
+        await interaction.response.send_message(f"Dziękujemy za ocenę: {rating}⭐", ephemeral=True)
+
+        # Tutaj możesz dodać zapis oceny do bazy lub logów itd.
 
 class StarRatingView(View):
     def __init__(self, user_id):
-        super().__init__(timeout=300)
+        super().__init__(timeout=300)  # 5 minut na ocenę
         self.user_id = user_id
         for i in range(1, 6):
             self.add_item(StarButton(i, user_id))
 
-# --- URUCHOMIENIE BOTA ---
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-bot.run(TOKEN)
+bot.run(os.getenv('DISCORD_TOKEN'))
