@@ -210,7 +210,16 @@ class MenuView(View):
                 timestamp=datetime.utcnow()
             )
             view = RealizeButtonView(interaction.user.id)
-            await log_channel.send(embed=embed, view=view)
+            await interaction.message.edit(
+    embed=discord.Embed(
+        title="📦 Ticket zrealizowany",
+        description=f"**Użytkownik:** <@{self.user_id}>\nTicket został oznaczony jako zrealizowany.",
+        color=discord.Color.green(),
+        timestamp=datetime.utcnow()
+    ),
+    view=None  # Usuwa przyciski
+)
+
 
         await interaction.response.send_message(
             f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
