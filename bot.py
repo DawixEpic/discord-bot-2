@@ -205,115 +205,52 @@ class MenuView(View):
                 description=f"**Użytkownik:** {interaction.user.mention}\n"
                             f"**Serwer:** {self.selected_server}\n"
                             f"**Tryb:** {self.selected_mode}\n"
-                            f"**Itemy:** {', '.join(self.selected_items)}",
-                color=discord.Color.gold(),
+                            f"**Itemy:** {', '.join(self.selected_items)}\n"
+                            f"**Ticket:** {self.channel.mention}",
+                color=discord.Color.green(),
                 timestamp=datetime.utcnow()
             )
-            view = RealizeButtonView(interaction.user.id)
-            await interaction.message.edit(
-    embed=discord.Embed(
-        title="📦 Ticket zrealizowany",
-        description=f"**Użytkownik:** <@{self.user_id}>\nTicket został oznaczony jako zrealizowany.",
-        color=discord.Color.green(),
-        timestamp=datetime.utcnow()
-    ),
-    view=None  # Usuwa przyciski
-)
+            view = RealizeButtonView(self.channel, self.member.id, self.selected_items)
+            await log_channel.send(embed=embed, view=view)
 
-
-        await interaction.response.send_message(
-            f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
-            ephemeral=True
-        )
-
-# --- PRZYCISK ZREALIZUJ (w kanale logów) ---
-class RealizeButton(Button):
-    def __init__(self, user_id):
-        super().__init__(label="✅ Zrealizuj", style=discord.ButtonStyle.success)
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction):
-        # Tylko admin lub osoba powiązana z ticketem może kliknąć (lub admin)
-        if interaction.user.id != self.user_id and not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ Nie masz uprawnień do realizacji tego ticketu.", ephemeral=True)
-            return
-
-        # Oznacz ticket jako zrealizowany
-        realized_tickets[self.user_id] = True
-
-        # Usuń wiadomość logu (przycisk + embed)
-        await interaction.message.delete()
-
-        await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
-
-        # Poproś o ocenę ticketu
-        await send_rating_prompt(interaction.guild, self.user_id)
+        await interaction.response.send_message("✅ Twój wybór został zapisany i przesłany do realizacji.", ephemeral=True)
 
 class RealizeButtonView(View):
-    def __init__(self, user_id):
+    def __init__(self, channel, user_id, items):
         super().__init__(timeout=None)
-        self.add_item(RealizeButton(user_id))
-
-# --- WYŚLIJ WIADOMOŚĆ Z OCENĄ ---
-async def send_rating_prompt(guild, user_id):
-    user = guild.get_member(user_id)
-    if not user:
-        return
-    rating_channel = guild.get_channel(RATING_CHANNEL_ID)
-    if not rating_channel:
-        return
-
-    embed = discord.Embed(
-        title="⭐ Oceń ticket",
-        description="Wybierz ocenę od 1 do 5 gwiazdek.",
-        color=discord.Color.blurple()
-    )
-    view = RatingView(user_id)
-    await rating_channel.send(content=user.mention, embed=embed, view=view)
-
-# --- VIEW OCENY ---
-class RatingView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=300)
+        self.channel = channel
         self.user_id = user_id
-        self.rating_select = RatingSelect(user_id)
-        self.add_item(self.rating_select)
+        self.items = items
 
-class RatingSelect(Select):
-    def __init__(self, user_id):
-        options = [
-            discord.SelectOption(label=str(i), description=f"{i} gwiazdek", value=str(i)) for i in range(1, 6)
-        ]
-        super().__init__(placeholder="Wybierz ocenę (1-5)", options=options, custom_id="rating_select")
-        self.user_id = user_id
+        self.add_item(RealizeButton())
+
+class RealizeButton(Button):
+    def __init__(self):
+        super().__init__(label="Zrealizuj", style=discord.ButtonStyle.success)
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ To nie twoja ocena.", ephemeral=True)
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ Nie masz uprawnień do realizacji.", ephemeral=True)
             return
 
-        if self.user_id in rated_users:
-            await interaction.response.send_message("❌ Już wystawiłeś ocenę.", ephemeral=True)
-            return
+        # Znajdź kanał ticketu
+        ticket_channel = self.view.channel
+        # Oznacz ticket jako zrealizowany
+        realized_tickets[self.view.user_id] = True
 
-        rating = int(self.values[0])
-        rated_users[self.user_id] = True
+        await interaction.response.send_message(f"✅ Ticket {ticket_channel.mention} został oznaczony jako zrealizowany.", ephemeral=True)
 
+        # Wyślij informację do kanału ocen
         rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
         if rating_channel:
             embed = discord.Embed(
-                title="⭐ Nowa ocena ticketu",
-                description=f"**Użytkownik:** {interaction.user.mention}\n**Ocena:** {rating} / 5",
-                color=discord.Color.blue(),
+                title="⭐ Prośba o ocenę",
+                description=f"Użytkownik <@{self.view.user_id}> otrzymał: {', '.join(self.view.items)}\n"
+                            f"Prosimy o ocenę od 1 do 5 gwiazdek.",
+                color=discord.Color.gold(),
                 timestamp=datetime.utcnow()
             )
+            # Możesz dodać system ocen tutaj (np. przyciski 1-5)
             await rating_channel.send(embed=embed)
 
-        await interaction.response.send_message(f"✅ Dziękujemy za ocenę: {rating} ⭐", ephemeral=True)
-
-        # Usuwamy wiadomość z oceną po wystawieniu oceny
-        await interaction.message.delete()
-
-        self.view.stop()
-
-bot.run(os.getenv('DISCORD_TOKEN'))
+bot.run(os.getenv('TOKEN'))
