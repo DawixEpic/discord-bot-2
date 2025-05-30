@@ -37,11 +37,8 @@ SERVER_OPTIONS = {
     }
 }
 
-# Przechowuje status ticketów zrealizowanych: {user_id: bool}
-realized_tickets = {}
-
-# Przechowuje ocenione tickety: {user_id: bool}
-rated_users = {}
+realized_tickets = {}  # {user_id: bool}
+rated_users = {}       # {user_id: bool}
 
 @bot.event
 async def on_ready():
@@ -202,24 +199,17 @@ class MenuView(View):
         if log_channel:
             embed = discord.Embed(
                 title="📥 Nowy wybór w tickecie",
-                description=f"**Użytkownik:** {interaction.user.mention}\n"
-                            f"**Serwer:** {self.selected_server}\n"
-                            f"**Tryb:** {self.selected_mode}\n"
-                            f"**Itemy:** {', '.join(self.selected_items)}",
+                description=(
+                    f"**Użytkownik:** {interaction.user.mention}\n"
+                    f"**Serwer:** {self.selected_server}\n"
+                    f"**Tryb:** {self.selected_mode}\n"
+                    f"**Itemy:** {', '.join(self.selected_items)}"
+                ),
                 color=discord.Color.gold(),
                 timestamp=datetime.utcnow()
             )
-            view = RealizeButtonView(interaction.user.id)
-            await interaction.message.edit(
-    embed=discord.Embed(
-        title="📦 Ticket zrealizowany",
-        description=f"**Użytkownik:** <@{self.user_id}>\nTicket został oznaczony jako zrealizowany.",
-        color=discord.Color.green(),
-        timestamp=datetime.utcnow()
-    ),
-    view=None  # Usuwa przyciski
-)
-
+            view = RealizeButtonView(interaction.user.id, self.selected_server, self.selected_mode, self.selected_items)
+            await log_channel.send(embed=embed, view=view)
 
         await interaction.response.send_message(
             f"✅ Wybrałeś: **{self.selected_server}** → **{self.selected_mode}**\n🧾 Itemy: {', '.join(self.selected_items)}",
@@ -228,9 +218,12 @@ class MenuView(View):
 
 # --- PRZYCISK ZREALIZUJ (w kanale logów) ---
 class RealizeButton(Button):
-    def __init__(self, user_id):
+    def __init__(self, user_id, server, mode, items):
         super().__init__(label="✅ Zrealizuj", style=discord.ButtonStyle.success)
         self.user_id = user_id
+        self.server = server
+        self.mode = mode
+        self.items = items
 
     async def callback(self, interaction: discord.Interaction):
         # Tylko admin lub osoba powiązana z ticketem może kliknąć (lub admin)
@@ -246,74 +239,68 @@ class RealizeButton(Button):
 
         await interaction.response.send_message("✅ Ticket oznaczony jako zrealizowany.", ephemeral=True)
 
-        # Poproś o ocenę ticketu
-        await send_rating_prompt(interaction.guild, self.user_id)
+        # Poproś o ocenę ticketu z informacją co i kiedy kupił
+        await send_rating_prompt(interaction.guild, self.user_id, self.server, self.mode, self.items)
 
-class RealizeButtonView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=None)
-        self.add_item(RealizeButton(user_id))
-
-# --- WYŚLIJ WIADOMOŚĆ Z OCENĄ ---
-async def send_rating_prompt(guild, user_id):
+async def send_rating_prompt(guild, user_id, server, mode, items):
     user = guild.get_member(user_id)
     if not user:
         return
+
     rating_channel = guild.get_channel(RATING_CHANNEL_ID)
     if not rating_channel:
         return
 
     embed = discord.Embed(
-        title="⭐ Oceń ticket",
-        description="Wybierz ocenę od 1 do 5 gwiazdek.",
-        color=discord.Color.blurple()
+        title="⭐ Prośba o ocenę zakupu",
+        description=(
+            f"Cześć {user.mention}!\n\n"
+            f"Dziękujemy za zakup:\n"
+            f"**Serwer:** {server}\n"
+            f"**Tryb:** {mode}\n"
+            f"**Itemy:** {', '.join(items)}\n\n"
+            "Prosimy o wystawienie oceny (1–5 gwiazdek) poniżej."
+        ),
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
     )
     view = RatingView(user_id)
-    await rating_channel.send(content=user.mention, embed=embed, view=view)
+    await rating_channel.send(embed=embed, view=view)
 
-# --- VIEW OCENY ---
+# --- SYSTEM OCEN (gwiazdki 1-5) ---
 class RatingView(View):
     def __init__(self, user_id):
-        super().__init__(timeout=300)
+        super().__init__(timeout=300)  # 5 minut na ocenę
         self.user_id = user_id
-        self.rating_select = RatingSelect(user_id)
-        self.add_item(self.rating_select)
+        # Przyciski od 1 do 5 gwiazdek
+        for stars in range(1, 6):
+            self.add_item(RatingButton(stars))
 
-class RatingSelect(Select):
-    def __init__(self, user_id):
-        options = [
-            discord.SelectOption(label=str(i), description=f"{i} gwiazdek", value=str(i)) for i in range(1, 6)
-        ]
-        super().__init__(placeholder="Wybierz ocenę (1-5)", options=options, custom_id="rating_select")
-        self.user_id = user_id
+    async def on_timeout(self):
+        # Po czasie usuń widok (opcjonalnie)
+        pass
+
+class RatingButton(Button):
+    def __init__(self, stars):
+        super().__init__(label=f"{stars}⭐", style=discord.ButtonStyle.primary)
+        self.stars = stars
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id:
+        if interaction.user.id != self.view.user_id:
             await interaction.response.send_message("❌ To nie twoja ocena.", ephemeral=True)
             return
 
-        if self.user_id in rated_users:
+        if rated_users.get(interaction.user.id):
             await interaction.response.send_message("❌ Już wystawiłeś ocenę.", ephemeral=True)
             return
 
-        rating = int(self.values[0])
-        rated_users[self.user_id] = True
+        rated_users[interaction.user.id] = True
 
-        rating_channel = interaction.guild.get_channel(RATING_CHANNEL_ID)
-        if rating_channel:
-            embed = discord.Embed(
-                title="⭐ Nowa ocena ticketu",
-                description=f"**Użytkownik:** {interaction.user.mention}\n**Ocena:** {rating} / 5",
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
-            )
-            await rating_channel.send(embed=embed)
+        # Potwierdź ocenę
+        await interaction.response.send_message(f"✅ Dziękujemy za ocenę {self.stars}⭐!", ephemeral=True)
 
-        await interaction.response.send_message(f"✅ Dziękujemy za ocenę: {rating} ⭐", ephemeral=True)
-
-        # Usuwamy wiadomość z oceną po wystawieniu oceny
+        # Usuń wiadomość z oceną
         await interaction.message.delete()
 
-        self.view.stop()
-
-bot.run(os.getenv('DISCORD_TOKEN'))
+# --- URUCHOMIENIE BOTA ---
+bot.run(os.getenv("DISCORD_TOKEN"))
