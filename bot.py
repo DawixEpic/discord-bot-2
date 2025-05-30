@@ -2,7 +2,8 @@ import discord
 from discord import app_commands
 import os
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # Zakładam, że na Railway masz ustawiony sekret DISCORD_TOKEN
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = int(os.getenv("1373253103176122399"))  # ID serwera (guild) jako int
 
 class MyClient(discord.Client):
     def __init__(self):
@@ -11,8 +12,9 @@ class MyClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        # Zarejestruj slash commands globalnie (można też na guildę)
-        await self.tree.sync()
+        # Synchronizacja tylko na konkretnym serwerze - działa od razu
+        guild = discord.Object(id=GUILD_ID)
+        await self.tree.sync(guild=guild)
 
 client = MyClient()
 
