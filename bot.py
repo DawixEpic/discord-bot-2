@@ -1,36 +1,24 @@
-print("Bot się uruchamia!")
 import discord
 from discord import app_commands
-import os
-import sys
-import traceback
+from discord.ext import commands
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = 1373253103176122399  # Twój serwer na sztywno
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-if TOKEN is None:
-    print("Błąd: Brak tokena bota w zmiennej środowiskowej DISCORD_TOKEN!")
-    sys.exit(1)
+@bot.event
+async def on_ready():
+    print(f'Zalogowano jako {bot.user} (ID: {bot.user.id})')
+    try:
+        synced = await bot.tree.sync()
+        print(f'Zsynchronizowano {len(synced)} komend slash.')
+    except Exception as e:
+        print(f'Błąd synchronizacji komend: {e}')
 
-class MyClient(discord.Client):
-    def __init__(self):
-        intents = discord.Intents.default()
-        super().__init__(intents=intents)
-        self.tree = app_commands.CommandTree(self)
-
-    async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        await self.tree.sync(guild=guild)
-        print(f"Slash commands zarejestrowane dla serwera {GUILD_ID}")
-
-client = MyClient()
-
-@client.tree.command(name="ping", description="Odpowiada pongiem")
+@bot.tree.command(name="ping", description="Sprawdź czy bot odpowiada")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
-try:
-    client.run(TOKEN)
-except Exception:
-    print("Bot napotkał błąd podczas uruchamiania:")
-    traceback.print_exc()
+import os
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+bot.run(TOKEN)
