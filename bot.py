@@ -1,15 +1,21 @@
-from discord.ext import commands
-from discord import app_commands
+import discord
+import os
+from dotenv import load_dotenv
 
-bot = commands.Bot(command_prefix="!")
+load_dotenv()
+TOKEN = os.getenv('DISCORD_TOKEN')
+
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = discord.Bot(intents=intents)
+
+@bot.slash_command(description="Ping the bot")
+async def ping(ctx):
+    await ctx.respond("Pong!")
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()  # synchronizacja komend slash z Discordem
-    print(f"Zalogowano jako {bot.user}")
+    print(f'Logged in as {bot.user}')
 
-@bot.tree.command(name="444ping", description="Odpowiada Pong!")
-async def ping(interaction):
-    await interaction.response.send_message("Pong!")
-
-bot.run("TOKEN_TUTAJ")
+bot.run(TOKEN)
