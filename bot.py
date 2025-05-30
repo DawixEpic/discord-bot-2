@@ -1,9 +1,8 @@
 import discord
 from discord import app_commands
-import os
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("1373253103176122399"))  # ID serwera (guild) jako int
+TOKEN = "TWÓJ_TOKEN_TUTAJ"  # Zamień na swój token bota
+GUILD_ID = 1373253103176122399  # Zamień na ID swojego serwera (liczba, bez cudzysłowów)
 
 class MyClient(discord.Client):
     def __init__(self):
@@ -12,9 +11,9 @@ class MyClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        # Synchronizacja tylko na konkretnym serwerze - działa od razu
         guild = discord.Object(id=GUILD_ID)
         await self.tree.sync(guild=guild)
+        print(f"Slash commands zarejestrowane dla serwera {GUILD_ID}")
 
 client = MyClient()
 
