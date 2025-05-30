@@ -1,8 +1,15 @@
 import discord
 from discord import app_commands
+import os
+import sys
+import traceback
 
-TOKEN = "TWÓJ_TOKEN_TUTAJ"  # Zamień na swój token bota
-GUILD_ID = 1373253103176122399  # Zamień na ID swojego serwera (liczba, bez cudzysłowów)
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = 1373253103176122399  # Twój serwer na sztywno
+
+if TOKEN is None:
+    print("Błąd: Brak tokena bota w zmiennej środowiskowej DISCORD_TOKEN!")
+    sys.exit(1)
 
 class MyClient(discord.Client):
     def __init__(self):
@@ -21,5 +28,8 @@ client = MyClient()
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
-if __name__ == "__main__":
+try:
     client.run(TOKEN)
+except Exception:
+    print("Bot napotkał błąd podczas uruchamiania:")
+    traceback.print_exc()
