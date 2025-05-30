@@ -1,21 +1,24 @@
 import discord
+from discord import app_commands
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
-TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = os.getenv("DISCORD_TOKEN")  # Zakładam, że na Railway masz ustawiony sekret DISCORD_TOKEN
 
-intents = discord.Intents.default()
-intents.message_content = True
+class MyClient(discord.Client):
+    def __init__(self):
+        intents = discord.Intents.default()
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
 
-bot = discord.Bot(intents=intents)
+    async def setup_hook(self):
+        # Zarejestruj slash commands globalnie (można też na guildę)
+        await self.tree.sync()
 
-@bot.slash_command(description="Ping the bot")
-async def ping(ctx):
-    await ctx.respond("Pong!")
+client = MyClient()
 
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
+@client.tree.command(name="ping", description="Odpowiada pongiem")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("Pong!")
 
-bot.run(TOKEN)
+if __name__ == "__main__":
+    client.run(TOKEN)
