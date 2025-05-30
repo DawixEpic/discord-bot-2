@@ -1,3 +1,4 @@
+print("Bot się uruchamia!")
 import discord
 from discord import app_commands
 import os
