@@ -1,9 +1,15 @@
-import discord
+from discord.ext import commands
+from discord import app_commands
 
-bot = discord.Bot()
+bot = commands.Bot(command_prefix="!")
 
-@bot.command(description="Ping the bot", guild_ids=[1373295891460526200])  # Zastąp ID serwera
-async def ping(ctx):
-    await ctx.respond("Pong!")
+@bot.event
+async def on_ready():
+    await bot.tree.sync()  # synchronizacja komend slash z Discordem
+    print(f"Zalogowano jako {bot.user}")
 
-bot.run("TWÓJ_TOKEN_BOTA")
+@bot.tree.command(name="444ping", description="Odpowiada Pong!")
+async def ping(interaction):
+    await interaction.response.send_message("Pong!")
+
+bot.run("TOKEN_TUTAJ")
