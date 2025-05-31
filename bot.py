@@ -155,22 +155,34 @@ async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
-    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
-    if verify_channel:
-        embed = discord.Embed(
-            title="🔒 Weryfikacja konta",
-            description="Aby uzyskać dostęp do kanałów, w tym możliwości składania zamówień na itemy z różnych serwerów Minecraft, kliknij przycisk poniżej i zweryfikuj się.",
-            color=discord.Color.green()
-        )
-        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+ verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+if verify_channel:
+    # Usuń poprzednie wiadomości bota
+    async for msg in verify_channel.history(limit=100):
+        if msg.author == bot.user:
+            await msg.delete()
+
+    embed = discord.Embed(
+        title="🔒 Weryfikacja konta",
+        description="Aby uzyskać dostęp do kanałów, w tym możliwości składania zamówień na itemy z różnych serwerów Minecraft, kliknij przycisk poniżej i zweryfikuj się.",
+        color=discord.Color.green()
+    )
+    await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+
 
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
-    if ticket_channel:
-        embed = discord.Embed(
-            title="🎫 Składanie zamówień na itemy",
-            description="Kliknij przycisk poniżej, aby otworzyć ticket i zamówić przedmioty z wybranego serwera i trybu Minecraft. Po otwarciu ticketa wybierz odpowiednie opcje z menu.",
-            color=discord.Color.blue()
-        )
-        await ticket_channel.send(embed=embed, view=TicketButton())
+if ticket_channel:
+    # Usuń poprzednie wiadomości bota
+    async for msg in ticket_channel.history(limit=100):
+        if msg.author == bot.user:
+            await msg.delete()
+
+    embed = discord.Embed(
+        title="🎫 Składanie zamówień na itemy",
+        description="Kliknij przycisk poniżej, aby otworzyć ticket i zamówić przedmioty z wybranego serwera i trybu Minecraft. Po otwarciu ticketa wybierz odpowiednie opcje z menu.",
+        color=discord.Color.blue()
+    )
+    await ticket_channel.send(embed=embed, view=TicketButton())
+
 
 bot.run(os.getenv("DISCORD_TOKEN"))
