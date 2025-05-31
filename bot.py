@@ -13,6 +13,7 @@ ROLE_ID = 1373275307150278686
 VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
+LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID kanału z logami
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -24,12 +25,12 @@ SERVER_OPTIONS = {
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["50k$", "1mln$", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
     },
     "𝐑𝐀𝐏𝐘": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostędne", "nie dostędne", "nie dostędne"],
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["10mld$ ", "Miecz 35", "Set 35"]
-  },
+    },
     "𝐏𝐘𝐊𝐌𝐂": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["15k$", "Buda", "Love swap", "Klata meduzy"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostędne", "nie dostędne", "nie dostędne"]
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
 
@@ -85,6 +86,17 @@ class PurchaseView(discord.ui.View):
         self.item = self.item_select.values[0]
         self.clear_items()
         await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItem: `{self.item}`\n\n✅ Dziękujemy za złożenie zamówienia!", view=None)
+
+        # Wysyłanie logów na kanał logów:
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            embed.add_field(name="Użytkownik", value=interaction.user.mention, inline=False)
+            embed.add_field(name="Serwer", value=self.server, inline=True)
+            embed.add_field(name="Tryb", value=self.mode, inline=True)
+            embed.add_field(name="Item", value=self.item, inline=False)
+            embed.set_footer(text=f"ID użytkownika: {interaction.user.id}")
+            await log_channel.send(embed=embed)
 
 # 🎫 TICKETY
 class TicketButton(discord.ui.View):
