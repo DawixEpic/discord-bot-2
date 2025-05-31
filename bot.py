@@ -7,9 +7,9 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-GUILD_ID = 123456789012345678  # ← ID Twojego serwera
-ROLE_ID = 987654321098765432   # ← ID roli do nadania
-CHANNEL_ID = 112233445566778899  # ← ID kanału, gdzie bot ma wysłać przycisk
+GUILD_ID = 1373253103176122399  # ← ID Twojego serwera
+ROLE_ID = 1373275307150278686   # ← ID roli do nadania
+CHANNEL_ID = 1373258480382771270  # ← ID kanału, gdzie bot ma wysłać przycisk
 
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
