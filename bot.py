@@ -7,8 +7,8 @@ intents.members = True  # potrzebne do nadawania ról
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-GUILD_ID = 123456789012345678  # ← wpisz ID swojego serwera
-ROLE_ID = 987654321098765432   # ← wpisz ID roli weryfikacyjnej
+GUILD_ID = 1373253103176122399  # ← wpisz ID swojego serwera
+ROLE_ID = 1373275307150278686   # ← wpisz ID roli weryfikacyjnej
 
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
