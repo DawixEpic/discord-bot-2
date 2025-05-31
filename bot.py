@@ -58,7 +58,10 @@ class CloseButton(discord.ui.View):
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         admin_role = interaction.guild.get_role(ADMIN_ROLE_ID)
         if admin_role in interaction.user.roles:
-            await interaction.channel.delete(reason="Ticket zamknięty przez admina.")
+            try:
+                await interaction.channel.delete(reason="Ticket zamknięty przez admina.")
+            except Exception as e:
+                print(f"Błąd przy zamykaniu ticketa: {e}")
         else:
             await interaction.response.send_message("❌ Tylko administrator może zamknąć ten ticket.", ephemeral=True)
 
@@ -69,29 +72,28 @@ class RealizeOrderButton(discord.ui.View):
 
     @discord.ui.button(label="✅ Zrealizowane", style=discord.ButtonStyle.success)
     async def realize(self, interaction: discord.Interaction, button: discord.ui.Button):
-        admin_role = interaction.guild.get_role(ADMIN_ROLE_ID)
-        if admin_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Tylko administrator może oznaczyć zamówienie jako zrealizowane.", ephemeral=True)
-            return
-        
-        user = interaction.guild.get_member(self.user_id)
-        if not user:
-            await interaction.response.send_message("❌ Nie znaleziono użytkownika.", ephemeral=True)
-            return
-        
-        role = interaction.guild.get_role(REALIZED_ROLE_ID)
-        if role not in user.roles:
-            try:
-                await user.add_roles(role)
-            except discord.Forbidden:
-                await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać rolę.", ephemeral=True)
+        try:
+            admin_role = interaction.guild.get_role(ADMIN_ROLE_ID)
+            if admin_role not in interaction.user.roles:
+                await interaction.response.send_message("❌ Tylko administrator może oznaczyć zamówienie jako zrealizowane.", ephemeral=True)
                 return
-        
-        button.disabled = True
-        button.label = "Zrealizowane ✅"
-        await interaction.message.edit(view=self)
 
-        await interaction.response.send_message(f"✅ Zamówienie oznaczone jako zrealizowane. Rola {role.name} nadana użytkownikowi {user.mention}.", ephemeral=True)
+            user = interaction.guild.get_member(self.user_id)
+            if not user:
+                await interaction.response.send_message("❌ Nie znaleziono użytkownika.", ephemeral=True)
+                return
+
+            role = interaction.guild.get_role(REALIZED_ROLE_ID)
+            if role not in user.roles:
+                await user.add_roles(role)
+
+            button.disabled = True
+            button.label = "Zrealizowane ✅"
+            await interaction.message.edit(view=self)
+            await interaction.response.send_message(f"✅ Zamówienie oznaczone jako zrealizowane. Rola {role.name} nadana użytkownikowi {user.mention}.", ephemeral=True)
+        except Exception as e:
+            print(f"Error w RealizeOrderButton: {e}")
+            await interaction.response.send_message("❌ Wystąpił błąd podczas realizacji zamówienia.", ephemeral=True)
 
 class PurchaseView(discord.ui.View):
     def __init__(self):
@@ -142,7 +144,10 @@ class PurchaseView(discord.ui.View):
             embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
             embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
             
-            await log_channel.send(embed=embed, view=RealizeOrderButton(interaction.user.id))
+            try:
+                await log_channel.send(embed=embed, view=RealizeOrderButton(interaction.user.id))
+            except Exception as e:
+                print(f"Błąd podczas wysyłania loga: {e}")
 
 class TicketButton(discord.ui.View):
     @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
@@ -160,45 +165,63 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(read_messages=True)
         }
 
-        ticket_channel = await guild.create_text_channel(
-            name=f"ticket-{interaction.user.name}",
-            overwrites=overwrites,
-            category=category,
-            reason="Nowy ticket"
-        )
+        try:
+            ticket_channel = await guild.create_text_channel(
+                name=f"ticket-{interaction.user.name}",
+                overwrites=overwrites,
+                category=category,
+                reason="Nowy ticket"
+            )
+        except Exception as e:
+            print(f"Błąd przy tworzeniu kanału ticket: {e}")
+            await interaction.response.send_message("❌ Wystąpił błąd przy tworzeniu ticketu.", ephemeral=True)
+            return
 
-        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
-        await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
+        try:
+            await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
+            await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
+        except Exception as e:
+            print(f"Błąd podczas wysyłania wiadomości w tickecie: {e}")
+            await interaction.response.send_message("❌ Wystąpił błąd podczas wysyłania wiadomości w tickecie.", ephemeral=True)
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
+    if guild is None:
+        print("❌ Nie znaleziono guild! Sprawdź GUILD_ID")
+        return
 
     # Czyszczenie i wysyłanie wiadomości weryfikacyjnej
     verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
     if verify_channel:
-        async for msg in verify_channel.history(limit=100):
-            if msg.author == bot.user:
-                await msg.delete()
-        embed = discord.Embed(
-            title="🔒 Weryfikacja dostępu",
-            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu ticketów.",
-            color=discord.Color.blue()
-        )
-        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+        try:
+            async for msg in verify_channel.history(limit=100):
+                if msg.author == bot.user:
+                    await msg.delete()
+            embed = discord.Embed(
+                title="🔒 Weryfikacja dostępu",
+                description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu ticketów.",
+                color=discord.Color.blue()
+            )
+            await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+        except Exception as e:
+            print(f"Błąd podczas przygotowywania kanału weryfikacji: {e}")
 
     # Czyszczenie i wysyłanie wiadomości ticketowej
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
     if ticket_channel:
-        async for msg in ticket_channel.history(limit=100):
-            if msg.author == bot.user:
-                await msg.delete()
-        embed = discord.Embed(
-            title="🎫 System ticketów",
-            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie.",
-            color=discord.Color.green()
-        )
-        await ticket_channel.send(embed=embed, view=TicketButton())
+        try:
+            async for msg in ticket_channel.history(limit=100):
+                if msg.author == bot.user:
+                    await msg.delete()
+            embed = discord.Embed(
+                title="🎫 System ticketów",
+                description="Kliknij przycisk poniżej, aby utworzyć nowy ticket.",
+                color=discord.Color.green()
+            )
+            await ticket_channel.send(embed=embed, view=TicketButton())
+        except Exception as e:
+            print(f"Błąd podczas przygotowywania kanału ticketów: {e}")
 
 bot.run(os.getenv("TOKEN"))
