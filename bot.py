@@ -1,14 +1,15 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
+import os
 
 intents = discord.Intents.default()
-intents.members = True  # potrzebne do nadawania ról
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-GUILD_ID = 1373253103176122399  # ← wpisz ID swojego serwera
-ROLE_ID = 1373275307150278686   # ← wpisz ID roli weryfikacyjnej
+GUILD_ID = 123456789012345678  # ← ID Twojego serwera
+ROLE_ID = 987654321098765432   # ← ID roli do nadania
+CHANNEL_ID = 112233445566778899  # ← ID kanału, gdzie bot ma wysłać przycisk
 
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
@@ -25,21 +26,18 @@ class WeryfikacjaButton(discord.ui.View):
 
 @bot.event
 async def on_ready():
-    print(f"Zalogowano jako {bot.user}")
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"Zsynchronizowano {len(synced)} komend.")
-    except Exception as e:
-        print(f"Błąd synchronizacji komend: {e}")
+    print(f"✅ Zalogowano jako {bot.user}")
+    guild = bot.get_guild(GUILD_ID)
+    channel = guild.get_channel(CHANNEL_ID)
 
-@bot.tree.command(name="weryfikacja", description="Wysyła wiadomość z przyciskiem do weryfikacji", guild=discord.Object(id=GUILD_ID))
-async def weryfikacja(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🔒 Weryfikacja",
-        description="Kliknij przycisk poniżej, aby się zweryfikować i otrzymać dostęp.",
-        color=discord.Color.green()
-    )
-    await interaction.response.send_message(embed=embed, view=WeryfikacjaButton())
+    if channel:
+        embed = discord.Embed(
+            title="🔒 Weryfikacja",
+            description="Kliknij przycisk poniżej, aby się zweryfikować i otrzymać dostęp do serwera.",
+            color=discord.Color.green()
+        )
+        await channel.send(embed=embed, view=WeryfikacjaButton())
+    else:
+        print("❌ Nie znaleziono kanału!")
 
-import os
 bot.run(os.getenv("DISCORD_TOKEN"))
