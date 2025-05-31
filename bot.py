@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
@@ -13,7 +14,7 @@ ROLE_ID = 1373275307150278686
 VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID kanału z logami
+LOG_CHANNEL_ID = 1374479815914291240  # <-- ID kanału logów
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -48,26 +49,35 @@ class WeryfikacjaButton(discord.ui.View):
             except discord.Forbidden:
                 await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać Ci rolę.", ephemeral=True)
 
-# 🛒 MENU ZAKUPU
+# 🛒 MENU ZAKUPU z wielokrotnym wyborem itemów
 class PurchaseView(discord.ui.View):
     def __init__(self):
         super().__init__()
         self.server = None
         self.mode = None
-        self.item = None
+        self.items = []
 
-        self.server_select = discord.ui.Select(placeholder="Wybierz serwer...", options=[
-            discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()
-        ])
+        # Wybór serwera (pojedynczy)
+        self.server_select = discord.ui.Select(
+            placeholder="Wybierz serwer...",
+            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()],
+            max_values=1,
+            min_values=1
+        )
         self.server_select.callback = self.server_selected
         self.add_item(self.server_select)
 
     async def server_selected(self, interaction: discord.Interaction):
         self.server = self.server_select.values[0]
         self.clear_items()
-        self.mode_select = discord.ui.Select(placeholder="Wybierz tryb...", options=[
-            discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()
-        ])
+
+        # Wybór trybu (pojedynczy)
+        self.mode_select = discord.ui.Select(
+            placeholder="Wybierz tryb...",
+            options=[discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()],
+            max_values=1,
+            min_values=1
+        )
         self.mode_select.callback = self.mode_selected
         self.add_item(self.mode_select)
         await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nWybierz tryb:", view=self)
@@ -75,27 +85,44 @@ class PurchaseView(discord.ui.View):
     async def mode_selected(self, interaction: discord.Interaction):
         self.mode = self.mode_select.values[0]
         self.clear_items()
-        self.item_select = discord.ui.Select(placeholder="Wybierz item...", options=[
-            discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]
-        ])
-        self.item_select.callback = self.item_selected
-        self.add_item(self.item_select)
-        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz item:", view=self)
 
-    async def item_selected(self, interaction: discord.Interaction):
-        self.item = self.item_select.values[0]
+        # Wybór itemów (multi-select)
+        self.item_select = discord.ui.Select(
+            placeholder="Wybierz itemy (możesz wybrać więcej)...",
+            options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]],
+            max_values=min(25, len(SERVER_OPTIONS[self.server][self.mode])),  # max 25 na Select
+            min_values=1
+        )
+        self.item_select.callback = self.items_selected
+        self.add_item(self.item_select)
+        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:", view=self)
+
+    async def items_selected(self, interaction: discord.Interaction):
+        self.items = self.item_select.values
         self.clear_items()
-        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItem: `{self.item}`\n\n✅ Dziękujemy za złożenie zamówienia!", view=None)
+
+        items_str = ", ".join(self.items)
+        await interaction.response.edit_message(content=(
+            f"Serwer: `{self.server}`\n"
+            f"Tryb: `{self.mode}`\n"
+            f"Itemy: `{items_str}`\n\n"
+            "✅ Dziękujemy za złożenie zamówienia!"
+        ), view=None)
 
         # Wysyłanie logów na kanał logów:
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            embed = discord.Embed(
+                title="🛒 Nowe zamówienie w tickecie",
+                color=discord.Color.gold(),
+                timestamp=datetime.now()
+            )
             embed.add_field(name="Użytkownik", value=interaction.user.mention, inline=False)
             embed.add_field(name="Serwer", value=self.server, inline=True)
             embed.add_field(name="Tryb", value=self.mode, inline=True)
-            embed.add_field(name="Item", value=self.item, inline=False)
-            embed.set_footer(text=f"ID użytkownika: {interaction.user.id}")
+            embed.add_field(name="Itemy", value=items_str, inline=False)
+            embed.set_footer(text=f"Data zamówienia: {now} | ID użytkownika: {interaction.user.id}")
             await log_channel.send(embed=embed)
 
 # 🎫 TICKETY
