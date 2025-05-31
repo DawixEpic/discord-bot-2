@@ -1,19 +1,21 @@
 import discord
 from discord.ext import commands
 import os
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🔧 KONFIGURACJA:
+# 🔧 KONFIGURACJA
 GUILD_ID = 1373253103176122399
 ROLE_ID = 1373275307150278686
 VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1374479815914291240  # <-- Wstaw tutaj ID kanału z logami
+LOG_CHANNEL_ID = 1374479815914291240
+ADMIN_ROLE_ID = 1373275898375176232  # ⬅️ Podmień na ID roli administratora
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -54,7 +56,7 @@ class PurchaseView(discord.ui.View):
         super().__init__()
         self.server = None
         self.mode = None
-        self.items = []  # zmienione, żeby trzymać wiele itemów
+        self.items = []
 
         self.server_select = discord.ui.Select(placeholder="Wybierz serwer...", options=[
             discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()
@@ -75,36 +77,43 @@ class PurchaseView(discord.ui.View):
     async def mode_selected(self, interaction: discord.Interaction):
         self.mode = self.mode_select.values[0]
         self.clear_items()
-        # teraz itemy z możliwością multi-select
-        self.item_select = discord.ui.Select(
-            placeholder="Wybierz item(y)... (możesz wybrać więcej niż jeden)",
-            options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]],
-            max_values=len(SERVER_OPTIONS[self.server][self.mode]),  # max liczba itemów do wyboru
-            min_values=1  # minimalnie 1 item musi być wybrany
-        )
+        self.item_select = discord.ui.Select(placeholder="Wybierz itemy...", options=[
+            discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]
+        ], min_values=1, max_values=len(SERVER_OPTIONS[self.server][self.mode]))
         self.item_select.callback = self.item_selected
         self.add_item(self.item_select)
-        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz item(y):", view=self)
+        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:", view=self)
 
     async def item_selected(self, interaction: discord.Interaction):
         self.items = self.item_select.values
         self.clear_items()
-        items_text = ", ".join(self.items)
         await interaction.response.edit_message(
-            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItem(y): `{items_text}`\n\n✅ Dziękujemy za złożenie zamówienia!",
-            view=None
+            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy: `{', '.join(self.items)}`\n\n✅ Dziękujemy za złożenie zamówienia!",
+            view=CloseButtonView()
         )
 
-        # Wysyłanie logów na kanał logów:
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
-            embed.add_field(name="Użytkownik", value=f"{interaction.user.display_name} ({interaction.user.mention})", inline=False)
+            embed.add_field(name="Użytkownik", value=f"{interaction.user.mention} ({interaction.user.name})", inline=False)
             embed.add_field(name="Serwer", value=self.server, inline=True)
             embed.add_field(name="Tryb", value=self.mode, inline=True)
-            embed.add_field(name="Item(y)", value=items_text, inline=False)
-            embed.set_footer(text=f"ID użytkownika: {interaction.user.id} | Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
+            embed.set_footer(text=f"ID: {interaction.user.id} | Data: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
             await log_channel.send(embed=embed)
+
+# 🔒 PRZYCISK ZAMKNIJ
+class CloseButtonView(discord.ui.View):
+    @discord.ui.button(label="🔒 Zamknij ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        admin_role = discord.utils.get(interaction.guild.roles, id=ADMIN_ROLE_ID)
+        if admin_role not in interaction.user.roles:
+            await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketu.", ephemeral=True)
+            return
+
+        await interaction.response.send_message("⏳ Ticket zostanie zamknięty za 3 sekundy...")
+        await discord.utils.sleep_until(datetime.utcnow() + timedelta(seconds=3))
+        await interaction.channel.delete()
 
 # 🎫 TICKETY
 class TicketButton(discord.ui.View):
@@ -139,7 +148,6 @@ async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
-    # Weryfikacja
     verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
     if verify_channel:
         embed = discord.Embed(
@@ -149,7 +157,6 @@ async def on_ready():
         )
         await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
-    # Ticket
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
     if ticket_channel:
         embed = discord.Embed(
