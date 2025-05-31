@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 intents = discord.Intents.default()
 intents.members = True
@@ -111,8 +111,7 @@ class CloseButtonView(discord.ui.View):
             await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketu.", ephemeral=True)
             return
 
-        await interaction.response.send_message("⏳ Ticket zostanie zamknięty za 3 sekundy...")
-        await discord.utils.sleep_until(datetime.utcnow() + timedelta(seconds=3))
+        await interaction.response.send_message("✅ Ticket zostanie zamknięty...", ephemeral=True)
         await interaction.channel.delete()
 
 # 🎫 TICKETY
