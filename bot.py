@@ -16,6 +16,7 @@ TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 
 ADMIN_ROLE_ID = 1373275898375176232  # ← Zmień na prawidłowe ID roli admina
+REALIZED_ROLE_ID = 1374099985288921088  # ← Podmień na ID roli przyznawanej po realizacji
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -60,6 +61,37 @@ class CloseButton(discord.ui.View):
             await interaction.channel.delete(reason="Ticket zamknięty przez admina.")
         else:
             await interaction.response.send_message("❌ Tylko administrator może zamknąć ten ticket.", ephemeral=True)
+
+class RealizeOrderButton(discord.ui.View):
+    def __init__(self, user_id: int):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+
+    @discord.ui.button(label="✅ Zrealizowane", style=discord.ButtonStyle.success)
+    async def realize(self, interaction: discord.Interaction, button: discord.ui.Button):
+        admin_role = interaction.guild.get_role(ADMIN_ROLE_ID)
+        if admin_role not in interaction.user.roles:
+            await interaction.response.send_message("❌ Tylko administrator może oznaczyć zamówienie jako zrealizowane.", ephemeral=True)
+            return
+        
+        user = interaction.guild.get_member(self.user_id)
+        if not user:
+            await interaction.response.send_message("❌ Nie znaleziono użytkownika.", ephemeral=True)
+            return
+        
+        role = interaction.guild.get_role(REALIZED_ROLE_ID)
+        if role not in user.roles:
+            try:
+                await user.add_roles(role)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać rolę.", ephemeral=True)
+                return
+        
+        button.disabled = True
+        button.label = "Zrealizowane ✅"
+        await interaction.message.edit(view=self)
+
+        await interaction.response.send_message(f"✅ Zamówienie oznaczone jako zrealizowane. Rola {role.name} nadana użytkownikowi {user.mention}.", ephemeral=True)
 
 class PurchaseView(discord.ui.View):
     def __init__(self):
@@ -109,7 +141,8 @@ class PurchaseView(discord.ui.View):
             embed.add_field(name="Tryb", value=self.mode, inline=True)
             embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
             embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            await log_channel.send(embed=embed)
+            
+            await log_channel.send(embed=embed, view=RealizeOrderButton(interaction.user.id))
 
 class TicketButton(discord.ui.View):
     @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
@@ -150,22 +183,22 @@ async def on_ready():
                 await msg.delete()
         embed = discord.Embed(
             title="🔒 Weryfikacja dostępu",
-            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu zakupów na różnych serwerach Minecraft.",
-            color=discord.Color.green()
+            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu ticketów.",
+            color=discord.Color.blue()
         )
         await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
-    # Czyszczenie i wysyłanie wiadomości ticketa
+    # Czyszczenie i wysyłanie wiadomości ticketowej
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
     if ticket_channel:
         async for msg in ticket_channel.history(limit=100):
             if msg.author == bot.user:
                 await msg.delete()
         embed = discord.Embed(
-            title="🛒 Centrum Zakupów",
-            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie na itemy z serwerów Minecraft.",
-            color=discord.Color.blue()
+            title="🎫 System ticketów",
+            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie.",
+            color=discord.Color.green()
         )
         await ticket_channel.send(embed=embed, view=TicketButton())
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("TOKEN"))
