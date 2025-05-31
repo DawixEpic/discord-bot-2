@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import os
-from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
@@ -14,24 +13,25 @@ ROLE_ID = 1373275307150278686
 VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
-LOG_CHANNEL_ID = 1373275898375176232
+LOG_CHANNEL_ID = 1374479815914291240
+ADMIN_ROLE_ID = 1373275898375176232
 
 SERVER_OPTIONS = {
-    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
-        "𝐆𝐈𝐋𝐃𝐈𝐄": [" Elytra", "Buty flasha", "Miecz 6", "1k$", "Shulker s2", "Shulker totemów"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", " Kilof 25", "1mln$"]
+    "𝔌𝔛𝔇𝔟𝔛𝔢𝔚𝔰𝔯": {
+        "𝔊𝔯𝔛𝔢𝔢𝔞": [" Elytra", "Buty flasha", "Miecz 6", "1k$", "Shulker s2", "Shulker totemów"],
+        "𝔋𝔯𝔱𝔯𝔟": ["Set 25", "Miecz 25", " Kilof 25", "1mln$"]
     },
-    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["4,5k$ ", " 50k$", "550k$", "Anarchiczny set 2", " Anarchiczny set 1", "Anarchiczny miecz", " Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["50k$", "1mln$", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
+    "𝔀𝔗𝔀𝔔𝔂𝔜": {
+        "𝔋𝔢𝔟𝔞𝔬𝔀𝔥": ["4,5k$ ", " 50k$", "550k$", "Anarchiczny set 2", " Anarchiczny set 1", "Anarchiczny miecz", " Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
+        "𝔋𝔯𝔱𝔯𝔟": ["50k$", "1mln$", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
     },
-    "𝐑𝐀𝐏𝐘": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["10mld$ ", "Miecz 35", "Set 35"]
+    "𝔓𝔀𝔩𝔴": {
+        "𝔋𝔢𝔟𝔞𝔬𝔀𝔥": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝔋𝔯𝔱𝔯𝔟": ["10mld$ ", "Miecz 35", "Set 35"]
     },
-    "𝐏𝐘𝐊𝐌𝐂": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["15k$", "Buda", "Love swap", "Klata meduzy"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
+    "𝔿𝕊𝕂𝔾𝔼": {
+        "𝔋𝔢𝔟𝔞𝔬𝔀𝔥": ["15k$", "Buda", "Love swap", "Klata meduzy"],
+        "𝔋𝔯𝔱𝔯𝔟": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
 
@@ -74,52 +74,35 @@ class PurchaseView(discord.ui.View):
     async def mode_selected(self, interaction: discord.Interaction):
         self.mode = self.mode_select.values[0]
         self.clear_items()
-        self.item_select = discord.ui.Select(
-            placeholder="Wybierz item(y)...",
-            options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]],
-            min_values=1,
-            max_values=len(SERVER_OPTIONS[self.server][self.mode])
-        )
+        self.item_select = discord.ui.Select(placeholder="Wybierz itemy... (można wiele)", min_values=1, max_values=len(SERVER_OPTIONS[self.server][self.mode]), options=[
+            discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]
+        ])
         self.item_select.callback = self.item_selected
         self.add_item(self.item_select)
-        await interaction.response.edit_message(
-            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:",
-            view=self
-        )
+        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:", view=self)
 
     async def item_selected(self, interaction: discord.Interaction):
         self.items = self.item_select.values
         self.clear_items()
-
-        item_list = "\n".join(f"- {item}" for item in self.items)
-        await interaction.response.edit_message(
-            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy:\n{item_list}\n\n✅ Dziękujemy za złożenie zamówienia!",
-            view=CloseTicketButton()
-        )
+        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy: {', '.join(self.items)}\n\n✅ Dziękujemy za złożenie zamówienia!", view=None)
 
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed = discord.Embed(
-                title="🛒 Nowe zamówienie w tickecie",
-                color=discord.Color.gold(),
-                timestamp=datetime.now()
-            )
-            embed.add_field(name="Użytkownik", value=f"{interaction.user.mention}", inline=False)
+            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            embed.add_field(name="Użytkownik", value=f"{interaction.user} ({interaction.user.mention})", inline=False)
             embed.add_field(name="Serwer", value=self.server, inline=True)
             embed.add_field(name="Tryb", value=self.mode, inline=True)
-            embed.add_field(name="Itemy", value=item_list, inline=False)
-            embed.set_footer(text=f"Zamówienie od: {interaction.user.name}")
+            embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
+            embed.set_footer(text=f"Data: {discord.utils.format_dt(discord.utils.utcnow(), style='f')}")
             await log_channel.send(embed=embed)
 
-class CloseTicketButton(discord.ui.View):
+class CloseButton(discord.ui.View):
     @discord.ui.button(label="🔒 Zamknij ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket")
-    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        admin_role = interaction.guild.get_role(ROLE_ID)
-        if admin_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Nie masz uprawnień do zamknięcia tego ticketa.", ephemeral=True)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if ADMIN_ROLE_ID not in [role.id for role in interaction.user.roles]:
+            await interaction.response.send_message("⛔ Tylko administrator może zamknąć ticket!", ephemeral=True)
             return
-
-        await interaction.channel.delete(reason="Ticket zamknięty przez administrację.")
+        await interaction.channel.delete()
 
 class TicketButton(discord.ui.View):
     @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
@@ -144,10 +127,8 @@ class TicketButton(discord.ui.View):
             reason="Nowy ticket"
         )
 
-        await ticket_channel.send(
-            f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz serwer, tryb i itemy, które chcesz kupić:",
-            view=PurchaseView()
-        )
+        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz opcje zamówienia poniżej:", view=PurchaseView())
+        await ticket_channel.send(view=CloseButton())
         await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
 @bot.event
@@ -155,34 +136,30 @@ async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
- verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
-if verify_channel:
-    # Usuń poprzednie wiadomości bota
-    async for msg in verify_channel.history(limit=100):
-        if msg.author == bot.user:
-            await msg.delete()
+    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+    if verify_channel:
+        async for msg in verify_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
 
-    embed = discord.Embed(
-        title="🔒 Weryfikacja konta",
-        description="Aby uzyskać dostęp do kanałów, w tym możliwości składania zamówień na itemy z różnych serwerów Minecraft, kliknij przycisk poniżej i zweryfikuj się.",
-        color=discord.Color.green()
-    )
-    await verify_channel.send(embed=embed, view=WeryfikacjaButton())
-
+        embed = discord.Embed(
+            title="🔒 Weryfikacja konta",
+            description="Aby uzyskać dostęp do kanałów i składać zamówienia na itemy z różnych serwerów Minecraft, kliknij przycisk poniżej i zweryfikuj się.",
+            color=discord.Color.green()
+        )
+        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
-if ticket_channel:
-    # Usuń poprzednie wiadomości bota
-    async for msg in ticket_channel.history(limit=100):
-        if msg.author == bot.user:
-            await msg.delete()
+    if ticket_channel:
+        async for msg in ticket_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
 
-    embed = discord.Embed(
-        title="🎫 Składanie zamówień na itemy",
-        description="Kliknij przycisk poniżej, aby otworzyć ticket i zamówić przedmioty z wybranego serwera i trybu Minecraft. Po otwarciu ticketa wybierz odpowiednie opcje z menu.",
-        color=discord.Color.blue()
-    )
-    await ticket_channel.send(embed=embed, view=TicketButton())
-
+        embed = discord.Embed(
+            title="🎫 Składanie zamówień na itemy",
+            description="Kliknij przycisk poniżej, aby otworzyć ticket i zamówić przedmioty z wybranego serwera i trybu Minecraft. Po otwarciu ticketa wybierz odpowiednie opcje z menu.",
+            color=discord.Color.blue()
+        )
+        await ticket_channel.send(embed=embed, view=TicketButton())
 
 bot.run(os.getenv("DISCORD_TOKEN"))
