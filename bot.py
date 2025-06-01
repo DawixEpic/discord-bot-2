@@ -5,35 +5,39 @@ import os
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-CHANNEL_ID = 1378641563868991548  # Tam, gdzie embed ma się pojawić
-TICKET_CHANNEL_ID = 1373305137228939416  # ← TU wpisz ID kanału z ticketami
+# ID kanałów
+EMBED_CHANNEL_ID = 1378641563868991548  # Kanał, gdzie ma się pojawić wiadomość
+TICKET_CHANNEL_ID = 1373305137228939416  # Kanał ticketów
 
 class GoToTicketView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, guild_id):
         super().__init__()
         self.add_item(discord.ui.Button(
             label="🎫 Przejdź do ticketów",
             style=discord.ButtonStyle.link,
-            url=f"https://discord.com/channels/{{guild_id}}/{TICKET_CHANNEL_ID}"  # guild_id uzupełniany automatycznie
+            url=f"https://discord.com/channels/{guild_id}/{TICKET_CHANNEL_ID}"
         ))
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
-    guild = bot.get_guild(CHANNEL_ID >> 22)  # Pobiera guild_id z kanału
-    channel = bot.get_channel(CHANNEL_ID)
+    
+    # Pobranie kanału, do którego wysyłamy wiadomość
+    channel = bot.get_channel(EMBED_CHANNEL_ID)
+    if channel is None:
+        print("❌ Nie znaleziono kanału.")
+        return
 
-    if channel:
-        embed = discord.Embed(
-            title=" BOX ⮕ LF",
-            description="💸 **85k = 1mln**",
-            color=discord.Color.blue()
-        )
-        view = GoToTicketView()
-        view.children[0].url = f"https://discord.com/channels/{guild.id}/{TICKET_CHANNEL_ID}"
-        await channel.send(embed=embed, view=view)
-        print("📨 Embed z przyciskiem wysłany.")
-    else:
-        print("❌ Nie znaleziono kanału!")
+    guild_id = channel.guild.id
+    view = GoToTicketView(guild_id)
+
+    embed = discord.Embed(
+        title=" BOX ⮕ LF",
+        description="💸 **85k = 1mln**",
+        color=discord.Color.blue()
+    )
+
+    await channel.send(embed=embed, view=view)
+    print("📨 Wiadomość została wysłana.")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
