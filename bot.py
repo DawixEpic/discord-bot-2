@@ -4,7 +4,6 @@ import os
 
 intents = discord.Intents.default()
 intents.members = True
-intents.invites = True  # Dodaj, chociaż discord.py nie wymaga tego jawnie na invite event
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -15,8 +14,8 @@ VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
+
 ADMIN_ROLE_ID = 1373275898375176232  # ← Zmień na prawidłowe ID roli admina
-INVITE_STATS_CHANNEL_ID = 1378727886478901379  # Kanał ze statystykami zaproszeń
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -36,9 +35,6 @@ SERVER_OPTIONS = {
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
-
-# Cache na zaproszenia dla każdego serwera
-invites_cache = {}
 
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
@@ -146,9 +142,6 @@ async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
-    # Załaduj zaproszenia do cache
-    invites_cache[guild.id] = await guild.invites()
-
     # Czyszczenie i wysyłanie wiadomości weryfikacyjnej
     verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
     if verify_channel:
@@ -175,36 +168,4 @@ async def on_ready():
         )
         await ticket_channel.send(embed=embed, view=TicketButton())
 
-@bot.event
-async def on_member_join(member):
-    guild = member.guild
-    invite_channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
-    if not invite_channel:
-        return
-
-    invites_before = invites_cache.get(guild.id, [])
-    invites_after = await guild.invites()
-
-    inviter = None
-    for before_invite in invites_before:
-        for after_invite in invites_after:
-            if before_invite.code == after_invite.code and after_invite.uses < after_invite.max_uses:
-                if after_invite.uses > before_invite.uses:
-                    inviter = after_invite.inviter
-                    break
-        if inviter:
-            break
-
-    invites_cache[guild.id] = invites_after
-
-    if inviter:
-        total_uses = sum(inv.uses for inv in invites_after if inv.inviter == inviter)
-        try:
-            await invite_channel.send(
-                f"**{member.mention} został zaproszony przez {inviter.mention}!**\n"
-                f"{inviter.name} ma już **{total_uses}** zaproszeń."
-            )
-        except Exception as e:
-            print(f"Błąd podczas wysyłania wiadomości na kanał zaproszeń: {e}")
-
-bot.run(os.getenv("TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
