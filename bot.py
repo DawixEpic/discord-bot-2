@@ -1,14 +1,14 @@
 import discord
 from discord.ext import commands
+import os
 
 intents = discord.Intents.default()
+intents.message_content = True  # Dodaj ten intent, żeby bot mógł czytać wiadomości
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID kanału ticketów – PODMIEŃ NA WŁAŚCIWY
-TICKET_CHANNEL_ID = 123456789012345678
-
-# Tu są oferty z przypisanymi kanałami
-offers = {
+# Mapowanie ID kanałów na wiadomości (teksty)
+CHANNEL_MESSAGES = {
     1373266589310517338: """
 🛒 Oferta itemów na sprzedaż  
 <:Elytra:1374797373406187580> Elytra — Cena: 12zł  
@@ -82,26 +82,27 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """
 }
 
-class TicketButton(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="🛒 Otwórz ticket", style=discord.ButtonStyle.green)
-    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        channel = interaction.guild.get_channel(TICKET_CHANNEL_ID)
-        if channel:
-            await interaction.response.send_message(f"🔗 Kliknij, aby przejść do kanału ticketów: {channel.mention}", ephemeral=True)
-        else:
-            await interaction.response.send_message("Nie znaleziono kanału ticketów.", ephemeral=True)
-
 @bot.event
 async def on_ready():
-    print(f"Zalogowano jako {bot.user}")
-    view = TicketButton()
-
-    for channel_id, message in offers.items():
+    print(f"Zalogowano jako {bot.user}!")
+    
+    for channel_id, message_text in CHANNEL_MESSAGES.items():
         channel = bot.get_channel(channel_id)
         if channel:
-            await channel.send(content=message, view=view)
+            try:
+                await channel.send(message_text)
+                print(f"Wysłano wiadomość na kanał {channel_id}")
+            except Exception as e:
+                print(f"Błąd przy wysyłaniu do {channel_id}: {e}")
+        else:
+            print(f"Nie znaleziono kanału o ID {channel_id}")
+    
+    print("Wszystkie wiadomości zostały wysłane.")
+    await bot.close()
 
-bot.run("TWÓJ_TOKEN_BOTA")
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if not TOKEN:
+        print("Proszę ustawić zmienną środowiskową DISCORD_TOKEN z tokenem bota.")
+    else:
+        bot.run(TOKEN)
