@@ -13,8 +13,8 @@ async def on_ready():
     channel = bot.get_channel(CHANNEL_ID)
     if channel:
         embed = discord.Embed(
-            title="📦 BOX ⮕ LF",
-            description="💰 **85k = 1mln**",
+            title=" BOX ⮕ LF",
+            description="💸  **85k = 1mln**",
             color=discord.Color.blue()
         )
         await channel.send(embed=embed)
