@@ -1,12 +1,8 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
-import asyncio
 
-intents = discord.Intents.default()
-intents.members = True
-intents.invites = True  # potrzebne do pobierania zaproszeń
-
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 🔧 KONFIGURACJA
@@ -16,8 +12,7 @@ VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-INVITE_STATS_CHANNEL_ID = 1378727886478901379  # 👈 NOWE: Kanał z rankingiem zaproszeń
-
+INVITE_STATS_CHANNEL_ID = 1378727886478901379
 ADMIN_ROLE_ID = 1373275898375176232
 
 SERVER_OPTIONS = {
@@ -140,7 +135,8 @@ class TicketButton(discord.ui.View):
         await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
         await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
-# 📈 SYSTEM ZAPROSZEŃ
+# 🔁 Zadanie: aktualizacja liczby zaproszeń
+@tasks.loop(minutes=5)
 async def update_invite_stats():
     guild = bot.get_guild(GUILD_ID)
     channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
@@ -152,34 +148,29 @@ async def update_invite_stats():
 
     for invite in invites:
         if invite.inviter:
-            invite_counts[invite.inviter] = invite_counts.get(invite.inviter, 0) + invite.uses
+            invite_counts[invite.inviter.id] = invite_counts.get(invite.inviter.id, 0) + invite.uses
 
     sorted_invites = sorted(invite_counts.items(), key=lambda x: x[1], reverse=True)
+    lines = []
+    for i, (user_id, count) in enumerate(sorted_invites[:10], start=1):
+        user = guild.get_member(user_id)
+        name = user.name if user else f"<@{user_id}>"
+        lines.append(f"`#{i}` {name} — **{count}** zaproszeń")
 
-    embed = discord.Embed(title="📈 Ranking Zaproszeń", color=discord.Color.purple())
-    if not sorted_invites:
-        embed.description = "Brak zaproszeń do wyświetlenia."
-    else:
-        for i, (user, count) in enumerate(sorted_invites[:10], start=1):
-            embed.add_field(name=f"{i}. {user.name}", value=f"➕ {count} zaproszeń", inline=False)
-
-    async for msg in channel.history(limit=100):
+    text = "**📈 TOP zaproszenia:**\n" + "\n".join(lines) if lines else "Brak zaproszeń."
+    
+    async for msg in channel.history(limit=10):
         if msg.author == bot.user:
-            await msg.delete()
-    await channel.send(embed=embed)
-
-async def update_invites_loop():
-    await bot.wait_until_ready()
-    while not bot.is_closed():
-        await update_invite_stats()
-        await asyncio.sleep(3600)  # co 1 godzinę
+            await msg.edit(content=text)
+            break
+    else:
+        await channel.send(text)
 
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
-    # Weryfikacja
     verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
     if verify_channel:
         async for msg in verify_channel.history(limit=100):
@@ -192,7 +183,6 @@ async def on_ready():
         )
         await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
-    # Centrum zakupów
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
     if ticket_channel:
         async for msg in ticket_channel.history(limit=100):
@@ -205,8 +195,6 @@ async def on_ready():
         )
         await ticket_channel.send(embed=embed, view=TicketButton())
 
-    # Ranking zaproszeń
-    await update_invite_stats()
-    bot.loop.create_task(update_invites_loop())
+    update_invite_stats.start()
 
 bot.run(os.getenv("DISCORD_TOKEN"))
