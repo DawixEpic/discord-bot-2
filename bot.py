@@ -2,11 +2,10 @@ import discord
 from discord.ext import commands, tasks
 import os
 import asyncio
-from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
-intents.invites = True  # ważne do pobierania zaproszeń
+intents.invites = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -19,6 +18,7 @@ TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 ADMIN_ROLE_ID = 1373275898375176232
+INVITE_STATS_CHANNEL_ID = 1378727886478901379  # Zamień na właściwe ID
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -39,7 +39,8 @@ SERVER_OPTIONS = {
     }
 }
 
-INVITE_STATS_CHANNEL_ID = 1378727886478901379  # podmień na ID kanału ze statystykami zaproszeń
+# Cache zaproszeń do śledzenia użyć
+invite_uses_cache = {}
 
 # --- WERYFIKACJA ---
 class WeryfikacjaButton(discord.ui.View):
@@ -172,49 +173,85 @@ async def send_offers(channel):
         "**𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋:** 4,5k$\n50k$\n550k$\nAnarchiczny set 2\nAnarchiczny set 1\nAnarchiczny miecz\nZajęczy miecz\nTotem ułaskawienia\nExcalibur",
         "**𝐁𝐎𝐗𝐏𝐕𝐏:** 50k$\n1mln$\nExcalibur\nTotem ułaskawienia\nSakiewka"
     ]), inline=False)
-    # inne oferty ...
-    msg = await channel.send(embed=embed, view=TicketButton())
+    # możesz dodać pozostałe oferty w podobny sposób...
+    await channel.send(embed=embed, view=TicketButton())
     print("Wysłano ofertę.")
 
 # --- ZAPROSZENIA I ILOŚĆ ZAPROSZONYCH ---
-@bot.event
-async def on_member_join(member):
-    # Pobierz zaproszenia z serwera
-    invites_before = await member.guild.invites()
-    await asyncio.sleep(2)  # czekaj chwilę, by invite się zsynchronizowało
-    invites_after = await member.guild.invites()
-
-    inviter = None
-    for invite_before in invites_before:
-        for invite_after in invites_after:
-            if invite_before.code == invite_after.code and invite_after.uses > invite_before.uses:
-                inviter = invite_after.inviter
-                break
-        if inviter:
-            break
-
-    if inviter:
-        try:
-            await member.send(f"Cześć {member.name}! Zostałeś zaproszony przez {inviter.name}. On zaprosił już {inviter.invite_uses} osób!") 
-        except:
-            pass
-
-# --- TASKI ---
-@tasks.loop(minutes=30)
-async def update_offers():
-    guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        return
-    channel = guild.get_channel(TICKET_CHANNEL_ID)
-    if not channel:
-        return
-    await clear_bot_messages(channel)
-    await send_offers(channel)
 
 @bot.event
 async def on_ready():
     print(f"Bot zalogowany jako {bot.user}")
+
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        invites = await guild.invites()
+        # Inicjuj cache zaproszeń wraz z ich użyciami
+        for invite in invites:
+            invite_uses_cache[invite.code] = invite.uses
+
     update_offers.start()
 
-# --- START ---
-bot.run(os.getenv("TOKEN"))
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    try:
+        invites_before = invite_uses_cache.copy()  # kopia stanu przed joinem
+        invites_after = await guild.invites()
+        invite_uses_cache.clear()
+        for invite in invites_after:
+            invite_uses_cache[invite.code] = invite.uses
+
+        used_invite = None
+        for invite in invites_after:
+            before_uses = invites_before.get(invite.code, 0)
+            if invite.uses > before_uses:
+                used_invite = invite
+                break
+
+        if used_invite:
+            inviter = used_invite.inviter
+            if inviter:
+                # Wysyłanie prywatnej wiadomości do nowego członka z info kto go zaprosił i ile osób zaprosił
+                try:
+                    await member.send(f"Cześć {member.name}! Zostałeś zaproszony przez {inviter.name}. On zaprosił już {used_invite.uses} osób!")
+                except discord.Forbidden:
+                    pass  # Nie można wysłać DM (prawdopodobnie użytkownik ma wyłączone DM)
+                
+                # Możesz też wysłać statystyki na wybrany kanał:
+                stats_channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
+                if stats_channel:
+                    embed = discord.Embed(title="Nowy członek dołączył", color=discord.Color.green())
+                    embed.add_field(name="Użytkownik", value=member.mention, inline=True)
+                    embed.add_field(name="Zaprosił", value=inviter.mention, inline=True)
+                    embed.add_field(name="Liczba zaproszonych", value=str(used_invite.uses), inline=True)
+                    await stats_channel.send(embed=embed)
+        else:
+            # Zaproszenie nie zostało wykryte (np. vanity URL, lub zaproszenie wygasło)
+            pass
+    except Exception as e:
+        print(f"Błąd w on_member_join: {e}")
+
+@tasks.loop(minutes=60)
+async def update_offers():
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        channel = guild.get_channel(TICKET_CHANNEL_ID)
+        if channel:
+            await clear_bot_messages(channel)
+            await send_offers(channel)
+
+# --- Komenda weryfikacji (alternatywa do przycisku) ---
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def wyslij_weryfikacje(ctx):
+    view = WeryfikacjaButton()
+    await ctx.send("Kliknij przycisk, aby się zweryfikować:", view=view)
+
+# Uruchomienie bota
+if __name__ == "__main__":
+    TOKEN = os.getenv("TOKEN")
+    if not TOKEN:
+        print("Brak tokenu! Ustaw zmienną środowiskową TOKEN.")
+    else:
+        bot.run(TOKEN)
