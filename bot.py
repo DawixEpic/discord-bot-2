@@ -1,28 +1,29 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
+import asyncio
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
-intents.invites = True  # Potrzebne do śledzenia zaproszeń
+intents.invites = True  # ważne do pobierania zaproszeń
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🔧 KONFIGURACJA
+# --- KONFIGURACJA ---
 GUILD_ID = 1373253103176122399
 ROLE_ID = 1373275307150278686
 VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-WELCOME_CHANNEL_ID = 1378727886478901379  # <-- tu podaj ID kanału powitalnego
-
-ADMIN_ROLE_ID = 1373275898375176232  # ← Zmień na prawidłowe ID roli admina
+ADMIN_ROLE_ID = 1373275898375176232
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
-        "𝐆𝐈𝐋𝐃𝐈𝐄": [" Elytra", "Buty flasha", "Miecz 6", "1k$", "Shulker s2", "Shulker totemów"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", " Kilof 25", "1mln$"]
+        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "1k$", "Shulker s2", "Shulker totemów"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "1mln$"]
     },
     "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["4,5k$", "50k$", "550k$", "Anarchiczny set 2", "Anarchiczny set 1", "Anarchiczny miecz", "Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
@@ -38,8 +39,9 @@ SERVER_OPTIONS = {
     }
 }
 
-guild_invites = {}  # Słownik do przechowywania liczby użyć zaproszeń per serwer
+INVITE_STATS_CHANNEL_ID = 1378727886478901379  # podmień na ID kanału ze statystykami zaproszeń
 
+# --- WERYFIKACJA ---
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -53,6 +55,7 @@ class WeryfikacjaButton(discord.ui.View):
             except discord.Forbidden:
                 await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać Ci rolę.", ephemeral=True)
 
+# --- TICKET ---
 class CloseButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -72,18 +75,20 @@ class PurchaseView(discord.ui.View):
         self.mode = None
         self.items = []
 
-        self.server_select = discord.ui.Select(placeholder="Wybierz serwer...", options=[
-            discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()
-        ])
+        self.server_select = discord.ui.Select(
+            placeholder="Wybierz serwer...",
+            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
+        )
         self.server_select.callback = self.server_selected
         self.add_item(self.server_select)
 
     async def server_selected(self, interaction: discord.Interaction):
         self.server = self.server_select.values[0]
         self.clear_items()
-        self.mode_select = discord.ui.Select(placeholder="Wybierz tryb...", options=[
-            discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()
-        ])
+        self.mode_select = discord.ui.Select(
+            placeholder="Wybierz tryb...",
+            options=[discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()]
+        )
         self.mode_select.callback = self.mode_selected
         self.add_item(self.mode_select)
         await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nWybierz tryb:", view=self)
@@ -91,9 +96,12 @@ class PurchaseView(discord.ui.View):
     async def mode_selected(self, interaction: discord.Interaction):
         self.mode = self.mode_select.values[0]
         self.clear_items()
-        self.item_select = discord.ui.Select(placeholder="Wybierz itemy...", options=[
-            discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]
-        ], min_values=1, max_values=len(SERVER_OPTIONS[self.server][self.mode]))
+        self.item_select = discord.ui.Select(
+            placeholder="Wybierz itemy...",
+            options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]],
+            min_values=1,
+            max_values=len(SERVER_OPTIONS[self.server][self.mode])
+        )
         self.item_select.callback = self.item_selected
         self.add_item(self.item_select)
         await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:", view=self)
@@ -141,70 +149,72 @@ class TicketButton(discord.ui.View):
         await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
         await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
-@bot.event
-async def on_ready():
-    print(f"✅ Zalogowano jako {bot.user}")
-    guild = bot.get_guild(GUILD_ID)
-
-    # Załaduj zaproszenia serwera i zapisz do słownika
-    invites = await guild.invites()
-    guild_invites[guild.id] = {invite.code: invite.uses for invite in invites}
-
-    # Czyszczenie i wysyłanie wiadomości weryfikacyjnej
-    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
-    if verify_channel:
-        async for msg in verify_channel.history(limit=100):
+# --- OFERTY I USUWANIE STARYCH WIADOMOŚCI ---
+async def clear_bot_messages(channel):
+    try:
+        async for msg in channel.history(limit=100):
             if msg.author == bot.user:
                 await msg.delete()
-        embed = discord.Embed(
-            title="🔒 Weryfikacja dostępu",
-            description="Kliknij poniższy przycisk, aby się zweryfikować i uzyskać dostęp do serwera.",
-            color=discord.Color.green()
-        )
-        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+                await asyncio.sleep(0.5)  # aby nie było limitów API
+    except Exception as e:
+        print(f"Błąd przy czyszczeniu wiadomości: {e}")
 
-    # Czyszczenie i wysyłanie wiadomości z przyciskiem ticket
-    ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
-    if ticket_channel:
-        async for msg in ticket_channel.history(limit=100):
-            if msg.author == bot.user:
-                await msg.delete()
-        embed = discord.Embed(
-            title="🎫 Utwórz ticket",
-            description="Kliknij przycisk, aby utworzyć ticket i złożyć zamówienie.",
-            color=discord.Color.blue()
-        )
-        await ticket_channel.send(embed=embed, view=TicketButton())
+async def send_offers(channel):
+    embed = discord.Embed(title="🛒 Oferta itemów na sprzedaż", color=discord.Color.blue())
+    embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1373268875407396914/1378672704999264377/Zrzut_ekranu_2025-05-17_130038.png")
+    # oferta CRAFTPLAY
+    embed.add_field(name="𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘", value="\n".join([
+        "**𝐆𝐈𝐋𝐃𝐈𝐄:** Elytra\nButy flasha\nMiecz 6\n1k$\nShulker s2\nShulker totemów",
+        "**𝐁𝐎𝐗𝐏𝐕𝐏:** Set 25\nMiecz 25\nKilof 25\n1mln$"
+    ]), inline=False)
+    # oferta ANARCHIA
+    embed.add_field(name="𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀", value="\n".join([
+        "**𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋:** 4,5k$\n50k$\n550k$\nAnarchiczny set 2\nAnarchiczny set 1\nAnarchiczny miecz\nZajęczy miecz\nTotem ułaskawienia\nExcalibur",
+        "**𝐁𝐎𝐗𝐏𝐕𝐏:** 50k$\n1mln$\nExcalibur\nTotem ułaskawienia\nSakiewka"
+    ]), inline=False)
+    # inne oferty ...
+    msg = await channel.send(embed=embed, view=TicketButton())
+    print("Wysłano ofertę.")
 
+# --- ZAPROSZENIA I ILOŚĆ ZAPROSZONYCH ---
 @bot.event
 async def on_member_join(member):
-    guild = member.guild
+    # Pobierz zaproszenia z serwera
+    invites_before = await member.guild.invites()
+    await asyncio.sleep(2)  # czekaj chwilę, by invite się zsynchronizowało
+    invites_after = await member.guild.invites()
 
-    # Pobierz stare i nowe zaproszenia, by wykryć, które zostało użyte
-    invites_before = guild_invites.get(guild.id, {})
-    invites_after = await guild.invites()
-
-    used_invite = None
-    for invite in invites_after:
-        if invite.code in invites_before:
-            if invite.uses > invites_before[invite.code]:
-                used_invite = invite
+    inviter = None
+    for invite_before in invites_before:
+        for invite_after in invites_after:
+            if invite_before.code == invite_after.code and invite_after.uses > invite_before.uses:
+                inviter = invite_after.inviter
                 break
-        else:
-            if invite.uses is not None and invite.uses > 0:
-                used_invite = invite
-                break
+        if inviter:
+            break
 
-    # Aktualizuj słownik
-    guild_invites[guild.id] = {invite.code: invite.uses for invite in invites_after}
+    if inviter:
+        try:
+            await member.send(f"Cześć {member.name}! Zostałeś zaproszony przez {inviter.name}. On zaprosił już {inviter.invite_uses} osób!") 
+        except:
+            pass
 
-    # Wyślij powitanie z info kto zaprosił i ile zaproszeń ma inviter
-    welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID)
-    if used_invite and welcome_channel:
-        inviter = used_invite.inviter
-        invites_count = sum(
-            invite.uses for invite in invites_after if invite.inviter == inviter and invite.uses
-        )
-        await welcome_channel.send(f"Witaj {member.mention}! Zaprosił Cię {inviter.mention}, który ma już {invites_count} zaproszeń!")
+# --- TASKI ---
+@tasks.loop(minutes=30)
+async def update_offers():
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return
+    channel = guild.get_channel(TICKET_CHANNEL_ID)
+    if not channel:
+        return
+    await clear_bot_messages(channel)
+    await send_offers(channel)
 
+@bot.event
+async def on_ready():
+    print(f"Bot zalogowany jako {bot.user}")
+    update_offers.start()
+
+# --- START ---
 bot.run(os.getenv("TOKEN"))
