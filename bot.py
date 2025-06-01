@@ -1,108 +1,107 @@
 import discord
 from discord.ext import commands
-import os
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID kanału ticketów (przycisk prowadzi tutaj)
-TICKET_CHANNEL_ID = 1373305137228939416
+# ID kanału ticketów – PODMIEŃ NA WŁAŚCIWY
+TICKET_CHANNEL_ID = 123456789012345678
 
-# Lista ofert (kanał_id, treść oferty)
-OFFERS = [
-    (1373266589310517338, """🛒 Oferta itemów na sprzedaż
-:Elytra: Elytra — Cena: 12zł
-:Buty: Buty flasha — Cena: 5zł
-:Miecz: Miecz 6 — Cena: 3zł
+# Tu są oferty z przypisanymi kanałami
+offers = {
+    1373266589310517338: """
+🛒 Oferta itemów na sprzedaż  
+<:Elytra:1374797373406187580> Elytra — Cena: 12zł  
+<:Buty:1374796797222064230> Buty flasha — Cena: 5zł  
+<:Miecz:1374791139462352906> Miecz 6 — Cena: 3zł  
 
-:Shulker: Shulker s2 — Cena: 7zł
-:Shulker: Shulker totemów — Cena: 6zł
+<:Shulker:1374795916531335271> Shulker s2 — Cena: 7zł  
+<:Shulker:1374795916531335271> Shulker totemów — Cena: 6zł  
 
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+""",
+    1373267159576481842: """
+🛒 Oferta itemów na sprzedaż  
+<:Klata:1374793644246306866> Set 25 — Cena: 30zł  
+<:Miecz:1374791139462352906> Miecz 25 — Cena: 25zł  
+<:Kilof:1374795407493959751> Kilof 25 — Cena: 10zł  
+💸 1mln$ — Cena: 18zł  
 
-    (1373267159576481842, """🛒 Oferta itemów na sprzedaż
-:Klata: Set 25 — Cena: 30zł
-:Miecz: Miecz 25 — Cena: 25zł
-:Kilof: Kilof 25 — Cena: 10zł
-💸 1mln$ — Cena: 18zł
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+""",
+    1373268875407396914: """
+🛒 Oferta itemów na sprzedaż  
+💵 4,5k$ — Cena: 1zł  
+💸 50k$ — Cena: 12zł  
+💸 550k$ — Cena: 130zł  
+<:ANA2:1374799017359314944> Anarchiczny set 2 — Cena: 28zł  
+<:Klata:1374793644246306866> Anarchiczny set 1 — Cena: 9zł  
 
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
+⚔️ MIECZE:  
+<:Miecz:1374791139462352906> Anarchiczny miecz — Cena: 3zł  
 
-    (1373268875407396914, """🛒 Oferta itemów na sprzedaż
-💵 4,5k$ — Cena: 1zł
-💸 50k$ — Cena: 12zł 
-💸 550k$ — Cena: 130zł
-:ANA2: Anarchiczny set 2 — Cena: 28zł
-:Klata: Anarchiczny set 1 — Cena: 9zł
-⚔️ MIECZE:
-:Miecz: Anarchiczny miecz — Cena: 3zł
-🎉 EVENTÓWKI:
-:MieczZajeczy: Zajęczy miecz — Cena: 65zł
-:Totem: Totem ułaskawienia — Cena: 630zł 
-:Excalibur: Excalibur — Cena: 370zł
+🎉 EVENTÓWKI:  
+<:MieczZajeczy:1375486003891929088> Zajęczy miecz — Cena: 65zł  
+<:Totem:1374788635211206757> Totem ułaskawienia — Cena: 630zł  
+<:Excalibur:1374785662191927416> Excalibur — Cena: 370zł  
 
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+""",
+    1373270295556788285: """
+🛒 Oferta itemów na sprzedaż  
+💵 50k$ — Cena: 1zł  
+💸 1mln$ — Cena: 33zł  
 
-    (1373270295556788285, """🛒 Oferta itemów na sprzedaż
-💵 50k$ — Cena: 1zł
-💸 1mln$ — Cena: 33zł 
-🎉 EVENTOWKI:
-:Excalibur: Excalibur — Cena: 111zł 
-:Totem: Totem ułaskawienia — Cena: 270zł 
-:Sakiewka: Sakiewka — Cena: 50zł 
+🎉 EVENTÓWKI:  
+<:Excalibur:1374785662191927416> Excalibur — Cena: 111zł  
+<:Totem:1374788635211206757> Totem ułaskawienia — Cena: 270zł  
+<:Sakiewka:1374799829120716892> Sakiewka — Cena: 50zł  
 
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+""",
+    1378641563868991548: """
+BOX ⮕ LF  
+💸 85k = 1mln
+""",
+    1373273108093337640: """
+🛒 Oferta itemów na sprzedaż  
+💸 10mld$ — Cena: 2zł  
+<:Miecz:1374791139462352906> Miecz 35 — Cena: 65zł  
+<:Klata:1374793644246306866> Set 35 — Cena: 90zł  
 
-    (1378641563868991548, """BOX ⮕ LF
-💸 85k = 1mln"""),
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+""",
+    1374380939970347019: """
+🛒 Oferta itemów na sprzedaż  
+💵 15k$ — Cena: 1zł  
+<:Buda:1375488639496093828> Buda — Cena: 30zł  
+<:LoveSwap:1375490111801790464> Love swap — Cena: 100zł  
+<:KlataMeduzy:1375487632531918875> Klata meduzy — Cena: 140zł  
 
-    (1373273108093337640, """🛒 Oferta itemów na sprzedaż
-💸 10mld$ — Cena: 2zł 
-:Miecz: Miecz 35 — Cena: 65zł 
-:Klata: Set 35 — Cena: 90zł 
-
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
-
-    (1374380939970347019, """🛒 Oferta itemów na sprzedaż
-💵 15k$ — Cena: 1zł
-:Buda: Buda — Cena: 30zł
-:LoveSwap: Love swap — Cena: 100zł
-:KlataMeduzy: Klata meduzy — Cena: 140zł
-
-Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!"""),
-]
+Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
+"""
+}
 
 class TicketButton(discord.ui.View):
-    def __init__(self, guild_id):
-        super().__init__()
-        self.add_item(discord.ui.Button(
-            label="🎫 Otwórz ticket",
-            style=discord.ButtonStyle.link,
-            url=f"https://discord.com/channels/{guild_id}/{TICKET_CHANNEL_ID}"
-        ))
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🛒 Otwórz ticket", style=discord.ButtonStyle.green)
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = interaction.guild.get_channel(TICKET_CHANNEL_ID)
+        if channel:
+            await interaction.response.send_message(f"🔗 Kliknij, aby przejść do kanału ticketów: {channel.mention}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Nie znaleziono kanału ticketów.", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Zalogowano jako {bot.user}")
+    print(f"Zalogowano jako {bot.user}")
+    view = TicketButton()
 
-    for channel_id, message_text in OFFERS:
+    for channel_id, message in offers.items():
         channel = bot.get_channel(channel_id)
-        if not channel:
-            print(f"❌ Nie znaleziono kanału o ID {channel_id}")
-            continue
+        if channel:
+            await channel.send(content=message, view=view)
 
-        guild_id = channel.guild.id
-        view = TicketButton(guild_id)
-
-        embed = discord.Embed(
-            description=message_text,
-            color=discord.Color.green()
-        )
-
-        try:
-            await channel.send(embed=embed, view=view)
-            print(f"📨 Wysłano do kanału {channel.name}")
-        except Exception as e:
-            print(f"❌ Błąd przy wysyłaniu do kanału {channel_id}: {e}")
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run("TWÓJ_TOKEN_BOTA")
