@@ -8,15 +8,15 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID kanału, do którego ma przekierowywać przycisk
-TICKET_CHANNEL_ID = 137999999999999999  # Wstaw swój ID kanału ticketów
+TICKET_CHANNEL_ID = 1373305137228939416  # Wstaw swój ID kanału ticketów
 
 CHANNEL_MESSAGES = {
     1373266589310517338: """
 🛒 Oferta itemów na sprzedaż  
+
 <:Elytra:1374797373406187580> Elytra — Cena: 12zł  
 <:Buty:1374796797222064230> Buty flasha — Cena: 5zł  
 <:Miecz:1374791139462352906> Miecz 6 — Cena: 3zł  
-
 <:Shulker:1374795916531335271> Shulker s2 — Cena: 7zł  
 <:Shulker:1374795916531335271> Shulker totemów — Cena: 6zł  
 
@@ -24,6 +24,7 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
        1373267159576481842: """
 🛒 Oferta itemów na sprzedaż  
+
 <:Klata:1374793644246306866> Set 25 — Cena: 30zł  
 <:Miecz:1374791139462352906> Miecz 25 — Cena: 25zł  
 <:Kilof:1374795407493959751> Kilof 25 — Cena: 10zł  
@@ -33,6 +34,7 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1373268875407396914: """
 🛒 Oferta itemów na sprzedaż  
+
 💵 4,5k$ — Cena: 1zł  
 💸 50k$ — Cena: 12zł  
 💸 550k$ — Cena: 130zł  
@@ -51,6 +53,7 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1373270295556788285: """
 🛒 Oferta itemów na sprzedaż  
+
 💵 50k$ — Cena: 1zł  
 💸 1mln$ — Cena: 33zł  
 
@@ -67,6 +70,7 @@ BOX ⮕ LF
 """,
     1373273108093337640: """
 🛒 Oferta itemów na sprzedaż  
+
 💸 10mld$ — Cena: 2zł  
 <:Miecz:1374791139462352906> Miecz 35 — Cena: 65zł  
 <:Klata:1374793644246306866> Set 35 — Cena: 90zł  
@@ -74,7 +78,8 @@ BOX ⮕ LF
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1374380939970347019: """
-🛒 Oferta itemów na sprzedaż  
+🛒 Oferta itemów na sprzedaż 
+ 
 💵 15k$ — Cena: 1zł  
 <:Buda:1375488639496093828> Buda — Cena: 30zł  
 <:LoveSwap:1375490111801790464> Love swap — Cena: 100zł  
