@@ -3,11 +3,13 @@ from discord.ext import commands
 import os
 
 intents = discord.Intents.default()
-intents.message_content = True  # Dodaj ten intent, żeby bot mógł czytać wiadomości
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Mapowanie ID kanałów na wiadomości (teksty)
+# ID kanału, do którego ma przekierowywać przycisk
+TICKET_CHANNEL_ID = 137999999999999999  # Wstaw swój ID kanału ticketów
+
 CHANNEL_MESSAGES = {
     1373266589310517338: """
 🛒 Oferta itemów na sprzedaż  
@@ -20,7 +22,7 @@ CHANNEL_MESSAGES = {
 
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
-    1373267159576481842: """
+       1373267159576481842: """
 🛒 Oferta itemów na sprzedaż  
 <:Klata:1374793644246306866> Set 25 — Cena: 30zł  
 <:Miecz:1374791139462352906> Miecz 25 — Cena: 25zł  
@@ -82,21 +84,39 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """
 }
 
+class TicketView(discord.ui.View):
+    def __init__(self, channel_id):
+        super().__init__()
+        # Przyciski typu Link - przekierowują do kanału discordowego przez jego URL
+        url = f"https://discord.com/channels/{bot.guilds[0].id}/{channel_id}"
+        self.add_item(discord.ui.Button(label="Otwórz ticket", url=url))
+
 @bot.event
 async def on_ready():
     print(f"Zalogowano jako {bot.user}!")
-    
+
+    # Pobierz ID guild, by zbudować link do kanału
+    guild = bot.guilds[0]
+
     for channel_id, message_text in CHANNEL_MESSAGES.items():
         channel = bot.get_channel(channel_id)
         if channel:
             try:
-                await channel.send(message_text)
+                embed = discord.Embed(
+                    title="Oferta itemów na sprzedaż",
+                    description=message_text,
+                    color=discord.Color.blue()
+                )
+                # Tworzymy View z przyciskiem kierującym do kanału ticketów
+                view = TicketView(TICKET_CHANNEL_ID)
+
+                await channel.send(embed=embed, view=view)
                 print(f"Wysłano wiadomość na kanał {channel_id}")
             except Exception as e:
                 print(f"Błąd przy wysyłaniu do {channel_id}: {e}")
         else:
             print(f"Nie znaleziono kanału o ID {channel_id}")
-    
+
     print("Wszystkie wiadomości zostały wysłane.")
     await bot.close()
 
