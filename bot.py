@@ -9,7 +9,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID kanału ticketów i ID kanału z nagrodami za zaproszenia
 TICKET_CHANNEL_ID = 1373305137228939416
-REWARDS_CHANNEL_ID = 1378676448322975836  # <- zamień na swój ID kanału z nagrodami
+REWARDS_CHANNEL_ID = 1378727250274291834  # <- zamień na swój ID kanału z nagrodami
 
 # Link do loga/grafiki
 LOGO_URL = "https://cdn.discordapp.com/attachments/1373268875407396914/1378672704999264377/Zrzut_ekranu_2025-05-17_130038.png"
