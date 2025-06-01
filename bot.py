@@ -104,4 +104,5 @@ async def on_ready():
         if channel:
             await channel.send(content=message, view=view)
 
+import os
 bot.run("TWÓJ_TOKEN_BOTA")
