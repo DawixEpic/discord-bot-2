@@ -3,145 +3,184 @@ from discord.ext import commands
 import os
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-TICKET_CHANNEL_ID = 1373305137228939416  # Kanał ticketów
-INVITE_REWARD_CHANNEL_ID = 1378727250274291834  # Wstaw ID kanału z nagrodami za zaproszenia
-INVITE_STATS_CHANNEL_ID = 1378727886478901379  # Wstaw ID kanału z licznikiem zaproszeń
+# 🔧 KONFIGURACJA
+GUILD_ID = 1373253103176122399
+ROLE_ID = 1373275307150278686
+VERIFY_CHANNEL_ID = 1373258480382771270
+TICKET_CHANNEL_ID = 1373305137228939416
+TICKET_CATEGORY_ID = 1373277957446959135
+LOG_CHANNEL_ID = 1374479815914291240
 
-LOGO_URL = "https://cdn.discordapp.com/attachments/1373268875407396914/1378672704999264377/Zrzut_ekranu_2025-05-17_130038.png"
+ADMIN_ROLE_ID = 1373275898375176232  # ← Zmień na prawidłowe ID roli admina
 
-CHANNEL_MESSAGES = {
-    1373266589310517338: """
-<:Elytra:1374797373406187580> **Elytra** — 12zł  
-<:Buty:1374796797222064230> **Buty flasha** — 5zł  
-<:Miecz:1374791139462352906> **Miecz 6** — 3zł  
-<:Shulker:1374795916531335271> **Shulker s2** — 7zł  
-<:Shulker:1374795916531335271> **Shulker totemów** — 6zł  
-""",
-    1373267159576481842: """
-<:Klata:1374793644246306866> **Set 25** — 30zł  
-<:Miecz:1374791139462352906> **Miecz 25** — 25zł  
-<:Kilof:1374795407493959751> **Kilof 25** — 10zł  
-💸 **1mln$** — 18zł  
-""",
-    1373268875407396914: """
-💵 **4,5k$** — 1zł  
-💸 **50k$** — 12zł  
-💸 **550k$** — 130zł  
-<:ANA2:1374799017359314944> **Anarchiczny set 2** — 28zł  
-<:Klata:1374793644246306866> **Anarchiczny set 1** — 9zł  
-
-⚔️ **Miecze:**  
-<:Miecz:1374791139462352906> **Anarchiczny miecz** — 3zł  
-
-🎉 **Eventówki:**  
-<:MieczZajeczy:1375486003891929088> **Zajęczy miecz** — 65zł  
-<:Totem:1374788635211206757> **Totem ułaskawienia** — 630zł  
-<:Excalibur:1374785662191927416> **Excalibur** — 370zł  
-""",
-    1373270295556788285: """
-💵 **50k$** — 1zł  
-💸 **1mln$** — 33zł  
-
-🎉 **Eventówki:**  
-<:Excalibur:1374785662191927416> **Excalibur** — 111zł  
-<:Totem:1374788635211206757> **Totem ułaskawienia** — 270zł  
-<:Sakiewka:1374799829120716892> **Sakiewka** — 50zł  
-""",
-    1378641563868991548: """
-BOX ⮕ LF  
-💸 **85k = 1mln**
-""",
-    1373273108093337640: """
-💸 **10mld$** — 2zł  
-<:Miecz:1374791139462352906> **Miecz 35** — 65zł  
-<:Klata:1374793644246306866> **Set 35** — 90zł  
-""",
-    1374380939970347019: """
-💵 **15k$** — 1zł  
-<:Buda:1375488639496093828> **Buda** — 30zł  
-<:LoveSwap:1375490111801790464> **Love swap** — 100zł  
-<:KlataMeduzy:1375487632531918875> **Klata meduzy** — 140zł  
-"""
+SERVER_OPTIONS = {
+    "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
+        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "1k$", "Shulker s2", "Shulker totemów"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "1mln$"]
+    },
+    "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["4,5k$", "50k$", "550k$", "Anarchiczny set 2", "Anarchiczny set 1", "Anarchiczny miecz", "Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["50k$", "1mln$", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
+    },
+    "𝐑𝐀𝐏𝐘": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["10mld$", "Miecz 35", "Set 35"]
+    },
+    "𝐏𝐘𝐊𝐌𝐂": {
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["15k$", "Buda", "Love swap", "Klata meduzy"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
+    }
 }
 
-class TicketView(discord.ui.View):
-    def __init__(self, channel_id):
+class WeryfikacjaButton(discord.ui.View):
+    @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        role = interaction.guild.get_role(ROLE_ID)
+        if role in interaction.user.roles:
+            await interaction.response.send_message("🔔 Już masz tę rolę!", ephemeral=True)
+        else:
+            try:
+                await interaction.user.add_roles(role)
+                await interaction.response.send_message("✅ Zostałeś zweryfikowany! Rola została nadana.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać Ci rolę.", ephemeral=True)
+
+class CloseButton(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="❌ Zamknij ticket", style=discord.ButtonStyle.danger)
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        admin_role = interaction.guild.get_role(ADMIN_ROLE_ID)
+        if admin_role in interaction.user.roles:
+            await interaction.channel.delete(reason="Ticket zamknięty przez admina.")
+        else:
+            await interaction.response.send_message("❌ Tylko administrator może zamknąć ten ticket.", ephemeral=True)
+
+class PurchaseView(discord.ui.View):
+    def __init__(self):
         super().__init__()
-        url = f"https://discord.com/channels/{bot.guilds[0].id}/{channel_id}"
-        self.add_item(discord.ui.Button(label="🎟️ Otwórz ticket", url=url))
+        self.server = None
+        self.mode = None
+        self.items = []
 
+        self.server_select = discord.ui.Select(
+            placeholder="Wybierz serwer...",
+            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
+        )
+        self.server_select.callback = self.server_selected
+        self.add_item(self.server_select)
 
-class InviteRewardsView(discord.ui.View):
-    def __init__(self, invite_check_channel_id):
-        super().__init__()
-        url = f"https://discord.com/channels/{bot.guilds[0].id}/{invite_check_channel_id}"
-        self.add_item(discord.ui.Button(label="📊 Sprawdź zaproszenia", url=url))
+    async def server_selected(self, interaction: discord.Interaction):
+        self.server = self.server_select.values[0]
+        self.clear_items()
+        self.mode_select = discord.ui.Select(
+            placeholder="Wybierz tryb...",
+            options=[discord.SelectOption(label=mode) for mode in SERVER_OPTIONS[self.server].keys()]
+        )
+        self.mode_select.callback = self.mode_selected
+        self.add_item(self.mode_select)
+        await interaction.response.edit_message(
+            content=f"Serwer: `{self.server}`\nWybierz tryb:",
+            view=self
+        )
 
+    async def mode_selected(self, interaction: discord.Interaction):
+        self.mode = self.mode_select.values[0]
+        self.clear_items()
+        self.item_select = discord.ui.Select(
+            placeholder="Wybierz itemy...",
+            options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS[self.server][self.mode]],
+            min_values=1,
+            max_values=len(SERVER_OPTIONS[self.server][self.mode])
+        )
+        self.item_select.callback = self.item_selected
+        self.add_item(self.item_select)
+        await interaction.response.edit_message(
+            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nWybierz itemy:",
+            view=self
+        )
+
+    async def item_selected(self, interaction: discord.Interaction):
+        self.items = self.item_select.values
+        self.clear_items()
+        await interaction.response.edit_message(
+            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy: `{', '.join(self.items)}`\n\n✅ Dziękujemy za złożenie zamówienia!",
+            view=CloseButton()
+        )
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            embed.add_field(name="Użytkownik", value=f"{interaction.user.mention} ({interaction.user.name})", inline=False)
+            embed.add_field(name="Serwer", value=self.server, inline=True)
+            embed.add_field(name="Tryb", value=self.mode, inline=True)
+            embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
+            embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            await log_channel.send(embed=embed)
+
+class TicketButton(discord.ui.View):
+    @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        # Sprawdź czy użytkownik ma już ticket (nazwany według wzoru)
+        existing = discord.utils.get(guild.text_channels, name=f"ticket-{interaction.user.name.lower().replace(' ', '-')}")
+        if existing:
+            await interaction.response.send_message("🛑 Masz już otwarty ticket!", ephemeral=True)
+            return
+
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True)
+        }
+
+        ticket_channel = await guild.create_text_channel(
+            name=f"ticket-{interaction.user.name}",
+            overwrites=overwrites,
+            category=category,
+            reason="Nowy ticket"
+        )
+
+        await ticket_channel.send(
+            f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:",
+            view=PurchaseView()
+        )
+        await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Zalogowano jako {bot.user}!")
+    print(f"✅ Zalogowano jako {bot.user}")
+    guild = bot.get_guild(GUILD_ID)
 
-    # Wyślij oferty na kanały
-    for channel_id, message_text in CHANNEL_MESSAGES.items():
-        channel = bot.get_channel(channel_id)
-        if channel:
-            try:
-                # Usuń wcześniejsze wiadomości
-                async for msg in channel.history(limit=10):
-                    if msg.author == bot.user:
-                        await msg.delete()
+    # Wysyłanie wiadomości weryfikacyjnej
+    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+    if verify_channel:
+        async for msg in verify_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
+        embed = discord.Embed(
+            title="🔒 Weryfikacja dostępu",
+            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu zakupów na różnych serwerach Minecraft.",
+            color=discord.Color.green()
+        )
+        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
-                embed = discord.Embed(
-                    title="🛒 Oferta itemów na sprzedaż",
-                    description=message_text.strip(),
-                    color=discord.Color.blue()
-                )
-                embed.set_thumbnail(url=LOGO_URL)
+    # Wysyłanie wiadomości ticketowej
+    ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
+    if ticket_channel:
+        async for msg in ticket_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
+        embed = discord.Embed(
+            title="🛒 Centrum Zakupów",
+            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie na itemy z serwerów Minecraft.",
+            color=discord.Color.blue()
+        )
+        await ticket_channel.send(embed=embed, view=TicketButton())
 
-                view = TicketView(TICKET_CHANNEL_ID)
-                await channel.send(embed=embed, view=view)
-                print(f"Wysłano na kanał {channel_id}")
-            except Exception as e:
-                print(f"Błąd przy {channel_id}: {e}")
-
-    # Wyślij informację o zaproszeniach
-    invite_channel = bot.get_channel(INVITE_REWARD_CHANNEL_ID)
-    if invite_channel:
-        try:
-            embed = discord.Embed(
-                title="📢 Zaproszenia na Anarchia.gg",
-                description=(
-                    "**🎉 Zgarnij nagrody za zaproszenia znajomych!**\n\n"
-                    "🔹 **5 zaproszeń** — 💸 10k\n"
-                    "🔹 **10 zaproszeń** — 💸 20k\n"
-                    "🔹 **25 zaproszeń** — 💸 60k\n"
-                    "🔹 **50 zaproszeń** — 💸 150k\n\n"
-                    "Sprawdź, ile masz zaproszeń, klikając przycisk poniżej!"
-                ),
-                color=discord.Color.blue()
-            )
-            embed.set_thumbnail(url=LOGO_URL)
-            view = InviteRewardsView(INVITE_STATS_CHANNEL_ID)
-
-            async for msg in invite_channel.history(limit=10):
-                if msg.author == bot.user:
-                    await msg.delete()
-
-            await invite_channel.send(embed=embed, view=view)
-            print("Wysłano wiadomość o zaproszeniach.")
-        except Exception as e:
-            print(f"Błąd przy zaproszeniach: {e}")
-
-    await bot.close()
-
-if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    if not TOKEN:
-        print("⚠️ Proszę ustawić zmienną środowiskową DISCORD_TOKEN z tokenem bota.")
-    else:
-        bot.run(TOKEN)
+bot.run(os.getenv("DISCORD_TOKEN"))
