@@ -1,8 +1,12 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
+import asyncio
 
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.members = True
+intents.invites = True  # Dodajemy, aby bot miał dostęp do zaproszeń
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 🔧 KONFIGURACJA
@@ -12,8 +16,9 @@ VERIFY_CHANNEL_ID = 1373258480382771270
 TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
-INVITE_STATS_CHANNEL_ID = 1378727886478901379
-ADMIN_ROLE_ID = 1373275898375176232
+ADMIN_ROLE_ID = 1373275898375176232  # ← Zmień na prawidłowe ID roli admina
+
+INVITE_STATS_CHANNEL_ID = 1378727886478901379  # Kanał do wyświetlania info o zaproszeniach
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -135,42 +140,12 @@ class TicketButton(discord.ui.View):
         await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
         await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
-# 🔁 Zadanie: aktualizacja liczby zaproszeń
-@tasks.loop(minutes=5)
-async def update_invite_stats():
-    guild = bot.get_guild(GUILD_ID)
-    channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
-    if not guild or not channel:
-        return
-
-    invites = await guild.invites()
-    invite_counts = {}
-
-    for invite in invites:
-        if invite.inviter:
-            invite_counts[invite.inviter.id] = invite_counts.get(invite.inviter.id, 0) + invite.uses
-
-    sorted_invites = sorted(invite_counts.items(), key=lambda x: x[1], reverse=True)
-    lines = []
-    for i, (user_id, count) in enumerate(sorted_invites[:10], start=1):
-        user = guild.get_member(user_id)
-        name = user.name if user else f"<@{user_id}>"
-        lines.append(f"`#{i}` {name} — **{count}** zaproszeń")
-
-    text = "**📈 TOP zaproszenia:**\n" + "\n".join(lines) if lines else "Brak zaproszeń."
-    
-    async for msg in channel.history(limit=10):
-        if msg.author == bot.user:
-            await msg.edit(content=text)
-            break
-    else:
-        await channel.send(text)
-
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}")
     guild = bot.get_guild(GUILD_ID)
 
+    # Czyszczenie i wysyłanie wiadomości weryfikacyjnej
     verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
     if verify_channel:
         async for msg in verify_channel.history(limit=100):
@@ -183,6 +158,7 @@ async def on_ready():
         )
         await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
+    # Czyszczenie i wysyłanie wiadomości ticketa
     ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
     if ticket_channel:
         async for msg in ticket_channel.history(limit=100):
@@ -195,6 +171,36 @@ async def on_ready():
         )
         await ticket_channel.send(embed=embed, view=TicketButton())
 
-    update_invite_stats.start()
+# Event obsługujący wyświetlanie informacji o zaproszeniach
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    invite_channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
+    if not invite_channel:
+        return
+
+    try:
+        invites_before = await guild.invites()
+        # Czekamy chwilę, aby zaproszenia się zaktualizowały (można spróbować inaczej)
+        await asyncio.sleep(2)
+        invites_after = await guild.invites()
+
+        inviter = None
+        for before in invites_before:
+            for after in invites_after:
+                if before.code == after.code and after.uses > before.uses:
+                    inviter = after.inviter
+                    break
+            if inviter:
+                break
+
+        if inviter:
+            total_uses = sum(inv.uses for inv in invites_after if inv.inviter == inviter)
+            await invite_channel.send(
+                f"**{member.mention} został zaproszony przez {inviter.mention}!**\n"
+                f"{inviter.name} ma już **{total_uses}** zaproszeń."
+            )
+    except Exception as e:
+        print(f"Error w on_member_join: {e}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
