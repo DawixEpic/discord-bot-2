@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import asyncio
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.members = True
@@ -18,7 +19,7 @@ TICKET_CHANNEL_ID = 1373305137228939416
 TICKET_CATEGORY_ID = 1373277957446959135
 LOG_CHANNEL_ID = 1374479815914291240
 ADMIN_ROLE_ID = 1373275898375176232
-INVITE_STATS_CHANNEL_ID = 1378727886478901379  # Zamień na właściwe ID
+INVITE_STATS_CHANNEL_ID = 1378727886478901379  # podmień na prawdziwe ID
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
@@ -39,9 +40,6 @@ SERVER_OPTIONS = {
     }
 }
 
-# Cache zaproszeń do śledzenia użyć
-invite_uses_cache = {}
-
 # --- WERYFIKACJA ---
 class WeryfikacjaButton(discord.ui.View):
     @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
@@ -52,11 +50,11 @@ class WeryfikacjaButton(discord.ui.View):
         else:
             try:
                 await interaction.user.add_roles(role)
-                await interaction.response.send_message("✅ Zostałeś zweryfikowany! Rola została nadana.", ephemeral=True)
+                await interaction.response.send_message("✅ Zostałeś zweryfikowany!", ephemeral=True)
             except discord.Forbidden:
                 await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać Ci rolę.", ephemeral=True)
 
-# --- TICKET ---
+# --- TICKET SYSTEM ---
 class CloseButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -116,7 +114,7 @@ class PurchaseView(discord.ui.View):
         )
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            embed = discord.Embed(title="🛒 Nowe zamówienie", color=discord.Color.gold())
             embed.add_field(name="Użytkownik", value=f"{interaction.user.mention} ({interaction.user.name})", inline=False)
             embed.add_field(name="Serwer", value=self.server, inline=True)
             embed.add_field(name="Tryb", value=self.mode, inline=True)
@@ -147,111 +145,70 @@ class TicketButton(discord.ui.View):
             reason="Nowy ticket"
         )
 
-        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
+        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket utworzony. Wybierz przedmioty:", view=PurchaseView())
         await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
-# --- OFERTY I USUWANIE STARYCH WIADOMOŚCI ---
+# --- OFERTY + CZYSZCZENIE ---
 async def clear_bot_messages(channel):
     try:
         async for msg in channel.history(limit=100):
             if msg.author == bot.user:
                 await msg.delete()
-                await asyncio.sleep(0.5)  # aby nie było limitów API
+                await asyncio.sleep(0.5)
     except Exception as e:
-        print(f"Błąd przy czyszczeniu wiadomości: {e}")
+        print(f"Błąd czyszczenia: {e}")
 
 async def send_offers(channel):
     embed = discord.Embed(title="🛒 Oferta itemów na sprzedaż", color=discord.Color.blue())
     embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1373268875407396914/1378672704999264377/Zrzut_ekranu_2025-05-17_130038.png")
-    # oferta CRAFTPLAY
     embed.add_field(name="𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘", value="\n".join([
         "**𝐆𝐈𝐋𝐃𝐈𝐄:** Elytra\nButy flasha\nMiecz 6\n1k$\nShulker s2\nShulker totemów",
         "**𝐁𝐎𝐗𝐏𝐕𝐏:** Set 25\nMiecz 25\nKilof 25\n1mln$"
     ]), inline=False)
-    # oferta ANARCHIA
     embed.add_field(name="𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀", value="\n".join([
         "**𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋:** 4,5k$\n50k$\n550k$\nAnarchiczny set 2\nAnarchiczny set 1\nAnarchiczny miecz\nZajęczy miecz\nTotem ułaskawienia\nExcalibur",
         "**𝐁𝐎𝐗𝐏𝐕𝐏:** 50k$\n1mln$\nExcalibur\nTotem ułaskawienia\nSakiewka"
     ]), inline=False)
-    # możesz dodać pozostałe oferty w podobny sposób...
     await channel.send(embed=embed, view=TicketButton())
-    print("Wysłano ofertę.")
 
-# --- ZAPROSZENIA I ILOŚĆ ZAPROSZONYCH ---
+# --- ŚLEDZENIE ZAPROSZEŃ ---
+@bot.event
+async def on_member_join(member):
+    invites_before = await member.guild.invites()
+    await asyncio.sleep(2)
+    invites_after = await member.guild.invites()
+
+    inviter = None
+    for before in invites_before:
+        for after in invites_after:
+            if before.code == after.code and after.uses > before.uses:
+                inviter = after.inviter
+                break
+        if inviter:
+            break
+
+    if inviter:
+        try:
+            await member.send(f"Cześć {member.name}! Zostałeś zaproszony przez {inviter.name}. On zaprosił już {inviter.invite_uses} osób!")
+        except:
+            pass
+
+# --- AUTOMATYCZNE OFERTY CO 30 MIN ---
+@tasks.loop(minutes=30)
+async def update_offers():
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return
+    channel = guild.get_channel(TICKET_CHANNEL_ID)
+    if not channel:
+        return
+    await clear_bot_messages(channel)
+    await send_offers(channel)
 
 @bot.event
 async def on_ready():
-    print(f"Bot zalogowany jako {bot.user}")
-
-    guild = bot.get_guild(GUILD_ID)
-    if guild:
-        invites = await guild.invites()
-        # Inicjuj cache zaproszeń wraz z ich użyciami
-        for invite in invites:
-            invite_uses_cache[invite.code] = invite.uses
-
+    print(f"Zalogowano jako {bot.user}")
     update_offers.start()
 
-@bot.event
-async def on_member_join(member):
-    guild = member.guild
-    try:
-        invites_before = invite_uses_cache.copy()  # kopia stanu przed joinem
-        invites_after = await guild.invites()
-        invite_uses_cache.clear()
-        for invite in invites_after:
-            invite_uses_cache[invite.code] = invite.uses
-
-        used_invite = None
-        for invite in invites_after:
-            before_uses = invites_before.get(invite.code, 0)
-            if invite.uses > before_uses:
-                used_invite = invite
-                break
-
-        if used_invite:
-            inviter = used_invite.inviter
-            if inviter:
-                # Wysyłanie prywatnej wiadomości do nowego członka z info kto go zaprosił i ile osób zaprosił
-                try:
-                    await member.send(f"Cześć {member.name}! Zostałeś zaproszony przez {inviter.name}. On zaprosił już {used_invite.uses} osób!")
-                except discord.Forbidden:
-                    pass  # Nie można wysłać DM (prawdopodobnie użytkownik ma wyłączone DM)
-                
-                # Możesz też wysłać statystyki na wybrany kanał:
-                stats_channel = guild.get_channel(INVITE_STATS_CHANNEL_ID)
-                if stats_channel:
-                    embed = discord.Embed(title="Nowy członek dołączył", color=discord.Color.green())
-                    embed.add_field(name="Użytkownik", value=member.mention, inline=True)
-                    embed.add_field(name="Zaprosił", value=inviter.mention, inline=True)
-                    embed.add_field(name="Liczba zaproszonych", value=str(used_invite.uses), inline=True)
-                    await stats_channel.send(embed=embed)
-        else:
-            # Zaproszenie nie zostało wykryte (np. vanity URL, lub zaproszenie wygasło)
-            pass
-    except Exception as e:
-        print(f"Błąd w on_member_join: {e}")
-
-@tasks.loop(minutes=60)
-async def update_offers():
-    guild = bot.get_guild(GUILD_ID)
-    if guild:
-        channel = guild.get_channel(TICKET_CHANNEL_ID)
-        if channel:
-            await clear_bot_messages(channel)
-            await send_offers(channel)
-
-# --- Komenda weryfikacji (alternatywa do przycisku) ---
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def wyslij_weryfikacje(ctx):
-    view = WeryfikacjaButton()
-    await ctx.send("Kliknij przycisk, aby się zweryfikować:", view=view)
-
-# Uruchomienie bota
-if __name__ == "__main__":
-    TOKEN = os.getenv("TOKEN")
-    if not TOKEN:
-        print("Brak tokenu! Ustaw zmienną środowiskową TOKEN.")
-    else:
-        bot.run(TOKEN)
+# --- STARTUJEMY ---
+bot.run(os.getenv("TOKEN"))
