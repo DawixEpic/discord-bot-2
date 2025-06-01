@@ -8,13 +8,14 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID kanału, do którego ma przekierowywać przycisk
-TICKET_CHANNEL_ID = 1373305137228939416  # Podmień na swój ID kanału ticketów
+TICKET_CHANNEL_ID = 1373305137228939416  # Wstaw swój ID kanału ticketów
 
+# URL loga do tła embeda
 LOGO_URL = "https://cdn.discordapp.com/attachments/1373268875407396914/1378672704999264377/Zrzut_ekranu_2025-05-17_130038.png"
 
 CHANNEL_MESSAGES = {
     1373266589310517338: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż  
 
 <:Elytra:1374797373406187580> Elytra — Cena: 12zł  
 <:Buty:1374796797222064230> Buty flasha — Cena: 5zł  
@@ -25,7 +26,7 @@ CHANNEL_MESSAGES = {
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1373267159576481842: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż  
 
 <:Klata:1374793644246306866> Set 25 — Cena: 30zł  
 <:Miecz:1374791139462352906> Miecz 25 — Cena: 25zł  
@@ -35,7 +36,7 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1373268875407396914: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż  
 
 💵 4,5k$ — Cena: 1zł  
 💸 50k$ — Cena: 12zł  
@@ -54,7 +55,7 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1373270295556788285: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż  
 
 💵 50k$ — Cena: 1zł  
 💸 1mln$ — Cena: 33zł  
@@ -71,7 +72,7 @@ BOX ⮕ LF
 💸 85k = 1mln
 """,
     1373273108093337640: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż  
 
 💸 10mld$ — Cena: 2zł  
 <:Miecz:1374791139462352906> Miecz 35 — Cena: 65zł  
@@ -80,7 +81,7 @@ BOX ⮕ LF
 Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 """,
     1374380939970347019: """
-🛒 Oferta itemów na sprzedaż
+🛒 Oferta itemów na sprzedaż 
  
 💵 15k$ — Cena: 1zł  
 <:Buda:1375488639496093828> Buda — Cena: 30zł  
@@ -94,33 +95,66 @@ Kliknij przycisk poniżej, aby otworzyć ticket i dokonać zakupu!
 class TicketView(discord.ui.View):
     def __init__(self, channel_id):
         super().__init__()
-        url = f"https://discord.com/channels/{bot.guilds[0].id}/{channel_id}"
-        self.add_item(discord.ui.Button(label="Otwórz ticket", url=url, style=discord.ButtonStyle.primary))
+        # Link do kanału ticketów w serwerze
+        # Dla poprawności pobieramy guild id dynamicznie, ale to robimy w on_ready
+        # więc tu przekazujemy tylko channel_id
+        # URL formatu: https://discord.com/channels/<guild_id>/<channel_id>
+        # guild_id pobierzemy potem
+        self.channel_id = channel_id
+        self.guild_id = None
+
+    async def on_timeout(self):
+        # Automatyczne wyłączanie widoku po czasie, opcjonalne
+        self.clear_items()
+
+    def set_guild_id(self, guild_id):
+        self.guild_id = guild_id
+
+    def get_url(self):
+        if self.guild_id is None:
+            return None
+        return f"https://discord.com/channels/{self.guild_id}/{self.channel_id}"
+
+    def create_button(self):
+        url = self.get_url()
+        if url is None:
+            return None
+        return discord.ui.Button(label="Otwórz ticket", url=url)
 
 @bot.event
 async def on_ready():
     print(f"Zalogowano jako {bot.user}!")
 
+    guild = bot.guilds[0]  # Zakładamy, że bot jest na jednym serwerze
+
     for channel_id, message_text in CHANNEL_MESSAGES.items():
         channel = bot.get_channel(channel_id)
         if channel:
             try:
-                # Usuń poprzednie wiadomości (do 100) na kanale, aby była tylko jedna oferta
-                async for msg in channel.history(limit=100):
-                    if msg.author == bot.user:
-                        await msg.delete()
+                # Usuwamy wcześniejsze wiadomości z kanału, by była tylko jedna oferta
+                def is_bot_message(m):
+                    return m.author == bot.user
+
+                deleted = await channel.purge(check=is_bot_message)
 
                 embed = discord.Embed(
-                    title="Oferta itemów na sprzedaż",
+                    title="Oferta",
                     description=message_text,
                     color=discord.Color.blue()
                 )
-                embed.set_thumbnail(url=LOGO_URL)
+                embed.set_image(url=LOGO_URL)
 
+                # Tworzymy View z przyciskiem, ustawiamy guild_id, bo potrzebne do URL
                 view = TicketView(TICKET_CHANNEL_ID)
+                view.set_guild_id(guild.id)
+                # Czyścimy i dodajemy przycisk
+                view.clear_items()
+                button = view.create_button()
+                if button:
+                    view.add_item(button)
 
                 await channel.send(embed=embed, view=view)
-                print(f"Wysłano wiadomość na kanał {channel_id}")
+                print(f"Wysłano wiadomość na kanał {channel_id} (usunieto {len(deleted)} wiadomości)")
             except Exception as e:
                 print(f"Błąd przy wysyłaniu do {channel_id}: {e}")
         else:
@@ -128,6 +162,7 @@ async def on_ready():
 
     print("Wszystkie wiadomości zostały wysłane.")
     await bot.close()
+
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
