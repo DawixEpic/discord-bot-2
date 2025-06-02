@@ -4,7 +4,6 @@ import os
 
 intents = discord.Intents.default()
 intents.members = True
-intents.message_content = True  # na wypadek, gdybyś potrzebował treści wiadomości (np. w przyszłości)
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -35,6 +34,19 @@ SERVER_OPTIONS = {
     }
 }
 
+class WeryfikacjaButton(discord.ui.View):
+    @discord.ui.button(label="Zweryfikuj się ✅", style=discord.ButtonStyle.success, custom_id="verify_button")
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        role = interaction.guild.get_role(ROLE_ID)
+        if role in interaction.user.roles:
+            await interaction.response.send_message("🔔 Już masz tę rolę!", ephemeral=True)
+        else:
+            try:
+                await interaction.user.add_roles(role)
+                await interaction.response.send_message("✅ Zostałeś zweryfikowany!", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Nie mam uprawnień, aby nadać Ci rolę.", ephemeral=True)
+
 class CloseButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -42,7 +54,7 @@ class CloseButton(discord.ui.View):
     @discord.ui.button(label="❌ Zamknij ticket", style=discord.ButtonStyle.danger)
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         if discord.utils.get(interaction.user.roles, id=ADMIN_ROLE_ID):
-            await interaction.channel.delete(reason=f"Ticket zamknięty przez {interaction.user}")
+            await interaction.channel.delete(reason="Ticket zamknięty przez admina.")
         else:
             await interaction.response.send_message("❌ Tylko administrator może zamknąć ten ticket.", ephemeral=True)
 
@@ -57,47 +69,9 @@ class AmountModal(discord.ui.Modal, title="💵 Podaj kwotę"):
         self.parent_view.items.append(self.amount.value)
         await self.parent_view.finish(interaction)
 
-class SellModal(discord.ui.Modal, title="📝 Co chcesz sprzedać?"):
-    description_input = discord.ui.TextInput(label="Opis", placeholder="Np. Diamentowy miecz +5", required=True, style=discord.TextStyle.paragraph)
-
-    def __init__(self, parent_view: 'SellView'):
-        super().__init__()
-        self.parent_view = parent_view
-
-    async def on_submit(self, interaction: discord.Interaction):
-        self.parent_view.description = self.description_input.value
-        await self.parent_view.finish(interaction)
-
-async def create_ticket_channel(guild: discord.Guild, user: discord.Member, topic: str) -> discord.TextChannel:
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.get_role(ADMIN_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
-    }
-    category = guild.get_channel(TICKET_CATEGORY_ID)
-    if category is None:
-        raise ValueError("Kategoria ticketów nie istnieje!")
-
-    channel_name = f"ticket-{user.name}".lower()
-    existing = discord.utils.get(category.channels, name=channel_name)
-    if existing:
-        i = 1
-        while discord.utils.get(category.channels, name=f"{channel_name}-{i}"):
-            i += 1
-        channel_name = f"{channel_name}-{i}"
-
-    channel = await category.create_text_channel(
-        name=channel_name,
-        overwrites=overwrites,
-        topic=topic,
-        reason=f"Ticket utworzony dla {user}"
-    )
-    return channel
-
 class PurchaseView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=300)
+        super().__init__()
         self.server = None
         self.mode = None
         self.items = []
@@ -142,6 +116,7 @@ class PurchaseView(discord.ui.View):
     async def item_selected(self, interaction: discord.Interaction):
         selected = self.item_select.values
         if "💰 Kasa" in selected:
+            # Dodaj wszystkie oprócz Kasa, potem wywołaj modal
             self.items.extend(i for i in selected if i != "💰 Kasa")
             await interaction.response.send_modal(AmountModal(self))
         else:
@@ -150,137 +125,77 @@ class PurchaseView(discord.ui.View):
 
     async def finish(self, interaction: discord.Interaction):
         self.clear_items()
-        await interaction.response.edit_message(content="Tworzę ticket...", view=None)
-
-        guild = interaction.guild
-        user = interaction.user
-        topic = f"Zakup - Serwer: {self.server}, Tryb: {self.mode}, Itemy: {', '.join(self.items)}"
-
-        channel = await create_ticket_channel(guild, user, topic)
-
-        embed = discord.Embed(
-            title="🛒 Zamówienie",
-            description=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy: `{', '.join(self.items)}`",
-            color=discord.Color.gold()
+        await interaction.response.edit_message(
+            content=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nItemy: `{', '.join(self.items)}`\n\n✅ Dziękujemy za złożenie zamówienia!",
+            view=CloseButton()
         )
-        embed.set_footer(text=f"Użytkownik: {user} | ID: {user.id}")
-
-        view = CloseButton()
-        await channel.send(content=user.mention, embed=embed, view=view)
-
-        await interaction.followup.send(f"✅ Ticket został utworzony: {channel.mention}", ephemeral=True)
-
-        log_channel = guild.get_channel(LOG_CHANNEL_ID)
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed_log = discord.Embed(title="🛒 Nowe zamówienie", color=discord.Color.blue())
-            embed_log.add_field(name="Użytkownik", value=user.mention, inline=True)
-            embed_log.add_field(name="Serwer", value=self.server, inline=True)
-            embed_log.add_field(name="Tryb", value=self.mode, inline=True)
-            embed_log.add_field(name="Itemy", value=", ".join(self.items), inline=False)
-            await log_channel.send(embed=embed_log)
+            embed = discord.Embed(title="🛒 Nowe zamówienie w tickecie", color=discord.Color.gold())
+            embed.add_field(name="Użytkownik", value=f"{interaction.user.mention} ({interaction.user})", inline=False)
+            embed.add_field(name="Serwer", value=self.server, inline=True)
+            embed.add_field(name="Tryb", value=self.mode, inline=True)
+            embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
+            embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            await log_channel.send(embed=embed)
 
-        self.stop()
-
-class SellView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-        self.server = None
-        self.mode = None
-        self.description = None
-
-        self.server_select = discord.ui.Select(
-            placeholder="Wybierz serwer...",
-            options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
-        )
-        self.server_select.callback = self.server_selected
-        self.add_item(self.server_select)
-
-    async def server_selected(self, interaction: discord.Interaction):
-        self.server = self.server_select.values[0]
-        self.clear_items()
-
-        modes = SERVER_OPTIONS[self.server].keys()
-        self.mode_select = discord.ui.Select(
-            placeholder="Wybierz tryb...",
-            options=[discord.SelectOption(label=mode) for mode in modes]
-        )
-        self.mode_select.callback = self.mode_selected
-        self.add_item(self.mode_select)
-
-        await interaction.response.edit_message(content=f"Serwer: `{self.server}`\nWybierz tryb:", view=self)
-
-    async def mode_selected(self, interaction: discord.Interaction):
-        self.mode = self.mode_select.values[0]
-        self.clear_items()
-
-        await interaction.response.send_modal(SellModal(self))
-
-    async def finish(self, interaction: discord.Interaction):
-        self.clear_items()
-        await interaction.response.edit_message(content="Tworzę ticket...", view=None)
-
+class TicketButton(discord.ui.View):
+    @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
-        user = interaction.user
-        topic = f"Sprzedaż - Serwer: {self.server}, Tryb: {self.mode}, Opis: {self.description}"
+        ticket_name = f"ticket-{interaction.user.name.lower().replace(' ', '-')}"
+        existing = discord.utils.get(guild.text_channels, name=ticket_name)
+        if existing:
+            await interaction.response.send_message("🛑 Masz już otwarty ticket!", ephemeral=True)
+            return
 
-        channel = await create_ticket_channel(guild, user, topic)
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
 
-        embed = discord.Embed(
-            title="💰 Oferta sprzedaży",
-            description=f"Serwer: `{self.server}`\nTryb: `{self.mode}`\nOpis: `{self.description}`",
-            color=discord.Color.green()
+        ticket_channel = await guild.create_text_channel(
+            name=ticket_name,
+            overwrites=overwrites,
+            category=category,
+            reason="Nowy ticket"
         )
-        embed.set_footer(text=f"Użytkownik: {user} | ID: {user.id}")
 
-        view = CloseButton()
-        await channel.send(content=user.mention, embed=embed, view=view)
-
-        await interaction.followup.send(f"✅ Ticket został utworzony: {channel.mention}", ephemeral=True)
-
-        log_channel = guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            embed_log = discord.Embed(title="💰 Nowa oferta sprzedaży", color=discord.Color.green())
-            embed_log.add_field(name="Użytkownik", value=user.mention, inline=True)
-            embed_log.add_field(name="Serwer", value=self.server, inline=True)
-            embed_log.add_field(name="Tryb", value=self.mode, inline=True)
-            embed_log.add_field(name="Opis", value=self.description, inline=False)
-            await log_channel.send(embed=embed_log)
-
-        self.stop()
-
-class TicketTypeView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=120)
-
-    @discord.ui.button(label="Kup", style=discord.ButtonStyle.primary)
-    async def buy_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="Wybrałeś: Kup. Teraz wybierz opcje:", view=PurchaseView())
-
-    @discord.ui.button(label="Sprzedaj", style=discord.ButtonStyle.success)
-    async def sell_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="Wybrałeś: Sprzedaj. Teraz wybierz opcje:", view=SellView())
-
-@bot.command()
-async def verify(ctx):
-    if ctx.channel.id != VERIFY_CHANNEL_ID:
-        await ctx.send("Ta komenda może być używana tylko na kanale weryfikacji.", delete_after=5)
-        return
-
-    role = ctx.guild.get_role(ROLE_ID)
-    if role in ctx.author.roles:
-        await ctx.send("Jesteś już zweryfikowany.", delete_after=5)
-        return
-
-    await ctx.author.add_roles(role)
-    await ctx.send("Weryfikacja zakończona pomyślnie!", delete_after=5)
-
-@bot.slash_command(name="ticket", description="Utwórz nowy ticket")
-async def ticket(interaction: discord.Interaction):
-    view = TicketTypeView()
-    await interaction.response.send_message("Wybierz, czy chcesz kupić, czy sprzedać:", view=view, ephemeral=True)
+        await ticket_channel.send(
+            f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:",
+            view=PurchaseView()
+        )
+        await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Bot zalogowany jako {bot.user} (ID: {bot.user.id})")
+    print(f"✅ Zalogowano jako {bot.user}")
+    guild = bot.get_guild(GUILD_ID)
 
-bot.run(os.getenv("TOKEN"))
+    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+    if verify_channel:
+        async for msg in verify_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
+        embed = discord.Embed(
+            title="🔒 Weryfikacja dostępu",
+            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu zakupów na różnych serwerach Minecraft.",
+            color=discord.Color.green()
+        )
+        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
+
+    ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
+    if ticket_channel:
+        async for msg in ticket_channel.history(limit=100):
+            if msg.author == bot.user:
+                await msg.delete()
+        embed = discord.Embed(
+            title="🛒 Centrum Zakupów",
+            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie na itemy z serwerów Minecraft.",
+            color=discord.Color.blue()
+        )
+        await ticket_channel.send(embed=embed, view=TicketButton())
+
+bot.run(os.getenv("DISCORD_TOKEN"))
