@@ -126,7 +126,8 @@ class PurchaseView(discord.ui.View):
             embed.add_field(name="Tryb", value=self.mode, inline=True)
             embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
             embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            await log_channel.send(embed=embed, view=OrderActionView(interaction.user, self.server, self.mode, self.items))
+            view = OrderActionView(interaction.user, self.server, self.mode, self.items)
+            await log_channel.send(embed=embed, view=view)
 
 class OrderActionView(discord.ui.View):
     def __init__(self, user, server, mode, items):
@@ -136,69 +137,78 @@ class OrderActionView(discord.ui.View):
         self.mode = mode
         self.items = items
 
-    @discord.ui.button(label="✅ Zrealizuj", style=discord.ButtonStyle.success, custom_id="order_complete")
-    async def complete_order(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not discord.utils.get(interaction.user.roles, id=ADMIN_ROLE_ID):
-            await interaction.response.send_message("❌ Tylko administrator może wykonać tę akcję.", ephemeral=True)
-            return
-        await interaction.response.edit_message(content="✅ Zamówienie zostało zrealizowane.", view=None)
-        ocen_channel = interaction.guild.get_channel(1375528888586731762)
-        if ocen_channel:
-            embed = discord.Embed(title="⭐ Nowa ocena zamówienia", color=discord.Color.green())
-            embed.add_field(name="Użytkownik", value=f"{self.user.mention} ({self.user.name})", inline=False)
-            embed.add_field(name="Serwer", value=self.server, inline=True)
-            embed.add_field(name="Tryb", value=self.mode, inline=True)
-            embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
-            embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            await ocen_channel.send(embed=embed)
+    @discord.ui.button(label="Zrealizuj", style=discord.ButtonStyle.success)
+    async def fulfill(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if discord.utils.get(interaction.user.roles, id=ADMIN_ROLE_ID):
+            await interaction.message.delete()
+            await interaction.response.send_message(f"✅ Zamówienie użytkownika {self.user.mention} zostało zrealizowane.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Tylko administrator może zrealizować zamówienie.", ephemeral=True)
 
-    @discord.ui.button(label="❌ Odrzuć", style=discord.ButtonStyle.danger, custom_id="order_reject")
-    async def reject_order(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not discord.utils.get(interaction.user.roles, id=ADMIN_ROLE_ID):
-            await interaction.response.send_message("❌ Tylko administrator może wykonać tę akcję.", ephemeral=True)
-            return
-        await interaction.response.edit_message(content="❌ Zamówienie zostało odrzucone.", view=None)
+    @discord.ui.button(label="Odrzuć", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if discord.utils.get(interaction.user.roles, id=ADMIN_ROLE_ID):
+            await interaction.message.delete()
+            await interaction.response.send_message(f"❌ Zamówienie użytkownika {self.user.mention} zostało odrzucone.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Tylko administrator może odrzucić zamówienie.", ephemeral=True)
 
 class TicketButton(discord.ui.View):
     @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
-        existing = discord.utils.get(guild.channels, name=f"ticket-{interaction.user.id}")
+        existing = discord.utils.get(guild.text_channels, name=f"ticket-{interaction.user.name.lower().replace(' ', '-')}")
         if existing:
-            await interaction.response.send_message("Masz już otwarty ticket!", ephemeral=True)
+            await interaction.response.send_message("🛑 Masz już otwarty ticket!", ephemeral=True)
             return
+
+        category = guild.get_channel(TICKET_CATEGORY_ID)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.get_role(ADMIN_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            guild.me: discord.PermissionOverwrite(read_messages=True)
         }
-        channel = await guild.create_text_channel(f"ticket-{interaction.user.id}", overwrites=overwrites, category=guild.get_channel(TICKET_CATEGORY_ID))
-        await channel.send(f"{interaction.user.mention}, witaj w swoim tickecie! Napisz, w czym możemy pomóc.", view=PurchaseView())
-        await interaction.response.send_message(f"Ticket został utworzony: {channel.mention}", ephemeral=True)
+
+        ticket_channel = await guild.create_text_channel(
+            name=f"ticket-{interaction.user.name}",
+            overwrites=overwrites,
+            category=category,
+            reason="Nowy ticket"
+        )
+
+        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
+        await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Bot zalogowany jako {bot.user}")
+    print(f"✅ Zalogowano jako {bot.user}")
     bot.add_view(WeryfikacjaButton())
     bot.add_view(TicketButton())
     bot.add_view(CloseButton())
-    bot.add_view(OrderActionView(None, None, None, None))  # Dodane, żeby widok się zarejestrował
+    bot.add_view(OrderActionView(None, None, None, None))
 
-# Komenda do wysłania panelu weryfikacji - możesz ją wywołać manualnie
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def send_verify(ctx):
-    channel = bot.get_channel(VERIFY_CHANNEL_ID)
-    if channel:
-        await channel.send("Kliknij przycisk aby się zweryfikować:", view=WeryfikacjaButton())
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+        if verify_channel:
+            messages = await verify_channel.history(limit=20).flatten()
+            if not any("Kliknij przycisk aby się zweryfikować:" in (m.content or "") for m in messages):
+                embed = discord.Embed(
+                    title="🔒 Weryfikacja dostępu",
+                    description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu zakupów na różnych serwerach Minecraft.",
+                    color=discord.Color.green()
+                )
+                await verify_channel.send(embed=embed, view=WeryfikacjaButton())
 
-# Komenda do wysłania panelu ticketów
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def send_ticket_panel(ctx):
-    channel = bot.get_channel(TICKET_CHANNEL_ID)
-    if channel:
-        await channel.send("Kliknij przycisk aby utworzyć ticket:", view=TicketButton())
+        ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
+        if ticket_channel:
+            messages = await ticket_channel.history(limit=20).flatten()
+            if not any("Kliknij przycisk aby utworzyć ticket:" in (m.content or "") for m in messages):
+                embed = discord.Embed(
+                    title="🎫 Tworzenie ticketów",
+                    description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie.",
+                    color=discord.Color.blue()
+                )
+                await ticket_channel.send(embed=embed, view=TicketButton())
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-bot.run(TOKEN)
+bot.run(os.getenv("TOKEN"))
