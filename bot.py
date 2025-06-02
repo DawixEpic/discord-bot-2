@@ -70,6 +70,35 @@ class AmountModal(discord.ui.Modal, title="💵 Podaj kwotę"):
         self.parent_view.items.append(self.amount.value)
         await self.parent_view.finish(interaction)
 
+class OrderActionView(discord.ui.View):
+    def __init__(self, user: discord.User):
+        super().__init__(timeout=None)
+        self.user = user
+
+    @discord.ui.button(label="✅ Zrealizuj", style=discord.ButtonStyle.success, custom_id="order_fulfill")
+    async def fulfill(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("❌ Tylko administrator może wykonać tę akcję.", ephemeral=True)
+            return
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.green()
+        embed.title += " — Zrealizowane"
+        embed.set_footer(text=f"Zrealizowano przez {interaction.user} | {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        await interaction.message.edit(embed=embed, view=None)
+        await interaction.response.defer()  # aby nie wysyłać dodatkowej wiadomości
+
+    @discord.ui.button(label="❌ Odrzuć", style=discord.ButtonStyle.danger, custom_id="order_reject")
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("❌ Tylko administrator może wykonać tę akcję.", ephemeral=True)
+            return
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.red()
+        embed.title += " — Odrzucone"
+        embed.set_footer(text=f"Odrzucono przez {interaction.user} | {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        await interaction.message.edit(embed=embed, view=None)
+        await interaction.response.defer()
+
 class PurchaseView(discord.ui.View):
     def __init__(self):
         super().__init__()
@@ -126,61 +155,37 @@ class PurchaseView(discord.ui.View):
             embed.add_field(name="Tryb", value=self.mode, inline=True)
             embed.add_field(name="Itemy", value=", ".join(self.items), inline=False)
             embed.set_footer(text=f"Data: {interaction.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            await log_channel.send(embed=embed)
+            await log_channel.send(embed=embed, view=OrderActionView(interaction.user))
 
 class TicketButton(discord.ui.View):
     @discord.ui.button(label="🎫 Utwórz ticket", style=discord.ButtonStyle.primary, custom_id="create_ticket")
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild = interaction.guild
-        existing = discord.utils.get(guild.text_channels, name=f"ticket-{interaction.user.name.lower().replace(' ', '-')}")
-        if existing:
-            await interaction.response.send_message("🛑 Masz już otwarty ticket!", ephemeral=True)
-            return
-
-        category = guild.get_channel(TICKET_CATEGORY_ID)
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True)
+            interaction.guild.get_role(ADMIN_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
-
-        ticket_channel = await guild.create_text_channel(
+        ticket_channel = await interaction.guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
+            category=interaction.guild.get_channel(TICKET_CATEGORY_ID),
             overwrites=overwrites,
-            category=category,
-            reason="Nowy ticket"
+            reason="Utworzono ticket"
         )
-
-        await ticket_channel.send(f"{interaction.user.mention} 🎫 Ticket został utworzony. Wybierz przedmioty z interesującego Cię serwera Minecraft:", view=PurchaseView())
-        await interaction.response.send_message("✅ Ticket utworzony!", ephemeral=True)
+        await ticket_channel.send(f"{interaction.user.mention} Twój ticket został utworzony!", view=PurchaseView())
+        await interaction.response.send_message(f"🎫 Ticket został utworzony: {ticket_channel.mention}", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Zalogowano jako {bot.user}")
+    print(f'Bot zalogowany jako {bot.user}')
     guild = bot.get_guild(GUILD_ID)
+    if guild:
+        verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
+        if verify_channel:
+            await verify_channel.purge()
+            await verify_channel.send("Kliknij, aby się zweryfikować:", view=WeryfikacjaButton())
+        ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
+        if ticket_channel:
+            await ticket_channel.purge()
+            await ticket_channel.send("Kliknij, aby utworzyć ticket:", view=TicketButton())
 
-    verify_channel = guild.get_channel(VERIFY_CHANNEL_ID)
-    if verify_channel:
-        async for msg in verify_channel.history(limit=100):
-            if msg.author == bot.user:
-                await msg.delete()
-        embed = discord.Embed(
-            title="🔒 Weryfikacja dostępu",
-            description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do systemu zakupów na różnych serwerach Minecraft.",
-            color=discord.Color.green()
-        )
-        await verify_channel.send(embed=embed, view=WeryfikacjaButton())
-
-    ticket_channel = guild.get_channel(TICKET_CHANNEL_ID)
-    if ticket_channel:
-        async for msg in ticket_channel.history(limit=100):
-            if msg.author == bot.user:
-                await msg.delete()
-        embed = discord.Embed(
-            title="🛒 Centrum Zakupów",
-            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie na itemy z serwerów Minecraft.",
-            color=discord.Color.blue()
-        )
-        await ticket_channel.send(embed=embed, view=TicketButton())
-
-bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("TOKEN"))
