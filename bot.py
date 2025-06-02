@@ -106,7 +106,7 @@ class PurchaseView(discord.ui.View):
     async def item_selected(self, interaction: discord.Interaction):
         selected = self.item_select.values
         if "Kasa" in selected:
-            self.items.extend(i for i in selected if i != "💰 Kasa")
+            self.items.extend(i for i in selected if i != "Kasa")
             await interaction.response.send_modal(AmountModal(self, interaction))
         else:
             self.items.extend(selected)
