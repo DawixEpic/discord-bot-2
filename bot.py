@@ -17,19 +17,19 @@ ADMIN_ROLE_ID = 1373275898375176232
 
 SERVER_OPTIONS = {
     "𝐂𝐑𝐀𝐅𝐓𝐏𝐋𝐀𝐘": {
-        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "💰 Kasa", "Shulker s2", "Shulker totemów"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "💰 Kasa"]
+        "𝐆𝐈𝐋𝐃𝐈𝐄": ["Elytra", "Buty flasha", "Miecz 6", "Kasa", "Shulker s2", "Shulker totemów"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Set 25", "Miecz 25", "Kilof 25", "Kasa"]
     },
     "𝐀𝐍𝐀𝐑𝐂𝐇𝐈𝐀": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["💰 Kasa", "Anarchiczny set 2", "Anarchiczny set 1", "Anarchiczny miecz", "Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["💰 Kasa", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Kasa", "Anarchiczny set 2", "Anarchiczny set 1", "Anarchiczny miecz", "Zajęczy miecz", "Totem ułaskawienia", "Excalibur"],
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Kasa", "Excalibur", "Totem ułaskawienia", "Sakiewka"]
     },
     "𝐑𝐀𝐏𝐘": {
         "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["nie dostępne", "nie dostępne", "nie dostępne"],
-        "𝐁𝐎𝐗𝐏𝐕𝐏": ["💰 Kasa", "Miecz 35", "Set 35"]
+        "𝐁𝐎𝐗𝐏𝐕𝐏": ["Kasa", "Miecz 35", "Set 35"]
     },
     "𝐏𝐘𝐊𝐌𝐂": {
-        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["💰 Kasa", "Buda", "Love swap", "Klata meduzy"],
+        "𝐋𝐈𝐅𝐄𝐒𝐓𝐄𝐀𝐋": ["Kasa", "Buda", "Love swap", "Klata meduzy"],
         "𝐁𝐎𝐗𝐏𝐕𝐏": ["nie dostępne", "nie dostępne", "nie dostępne"]
     }
 }
@@ -105,7 +105,7 @@ class PurchaseView(discord.ui.View):
 
     async def item_selected(self, interaction: discord.Interaction):
         selected = self.item_select.values
-        if "💰 Kasa" in selected:
+        if "Kasa" in selected:
             self.items.extend(i for i in selected if i != "💰 Kasa")
             await interaction.response.send_modal(AmountModal(self, interaction))
         else:
@@ -177,35 +177,10 @@ async def on_ready():
             if msg.author == bot.user:
                 await msg.delete()
         embed = discord.Embed(
-            title="🎫 System Ticketów",
-            description="Kliknij przycisk poniżej, aby utworzyć ticket i zamówić przedmioty.",
+            title="🛒 Centrum Zakupów",
+            description="Kliknij przycisk poniżej, aby utworzyć ticket i złożyć zamówienie na itemy z serwerów Minecraft.",
             color=discord.Color.blue()
         )
         await ticket_channel.send(embed=embed, view=TicketButton())
 
-@bot.event
-async def on_member_join(member: discord.Member):
-    guild = bot.get_guild(GUILD_ID)
-    if member.guild != guild:
-        return
-
-    invites = await guild.invites()
-    inviter = None
-    max_uses = -1
-
-    for invite in invites:
-        if invite.uses > max_uses:
-            max_uses = invite.uses
-            inviter = invite.inviter
-
-    log_channel = guild.get_channel(1378727886478901379)  # <- kanał docelowy zmieniony zgodnie z Twoją prośbą
-    if log_channel and inviter:
-        total_invites = sum(invite.uses for invite in invites if invite.inviter == inviter)
-        embed = discord.Embed(
-            title="📥 Nowy członek dołączył!",
-            description=f"**{member.name}** dołączył na serwer.\nZaproszony przez: {inviter.mention}\nŁączna liczba zaproszeń: {total_invites}",
-            color=discord.Color.purple()
-        )
-        await log_channel.send(embed=embed)
-
-bot.run(os.getenv("TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
