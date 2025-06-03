@@ -245,4 +245,6 @@ class SellOrderFinalizer:
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}.")
 
-bot.run("TWÓJ_TOKEN_BOTA")
+import os
+bot.run(os.getenv("DISCORD_BOT_TOKEN"))
+
