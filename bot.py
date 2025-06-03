@@ -246,5 +246,6 @@ async def on_ready():
     print(f"✅ Zalogowano jako {bot.user}.")
 
 import os
-bot.run(os.getenv("DISCORD_BOT_TOKEN"))
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
+bot.run(TOKEN)
