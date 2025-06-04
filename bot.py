@@ -1,15 +1,16 @@
+import os
 import discord
 from discord.ext import commands
-import asyncio
-import os
 
-TOKEN = 'TWÓJ_TOKEN_BOTA'
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = 1373253103176122399  # <-- wpisz tutaj ID serwera jako int
 CHANNEL_ID = 1373258480382771270
 ROLE_ID = 1373275307150278686
 
 intents = discord.Intents.default()
-intents.message_content = True
 intents.members = True
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
@@ -29,31 +30,28 @@ class VerifyView(discord.ui.View):
 
 @bot.event
 async def on_ready():
-    print(f"Zalogowano jako {bot.user}!")
+    print(f"Zalogowano jako {bot.user}")
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        print("Nie znalazłem serwera o podanym ID!")
+        return
 
-    channel = bot.get_channel(CHANNEL_ID)
+    channel = guild.get_channel(CHANNEL_ID)
+    if not channel:
+        print("Nie znalazłem kanału o podanym ID!")
+        return
 
-    # Usuwanie starych wiadomości
-    try:
-        messages = await channel.history(limit=100).flatten()
-        for msg in messages:
-            await msg.delete()
-    except Exception as e:
-        print("Błąd przy usuwaniu wiadomości:", e)
+    messages = await channel.history(limit=100).flatten()
+    for msg in messages:
+        await msg.delete()
 
-    # Wysyłanie nowej wiadomości z przyciskiem
-    view = VerifyView()
     await channel.send(
         "**Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.**",
-        view=view
+        view=VerifyView()
     )
 
-# Zarejestruj View przy starcie bota, żeby przycisk działał po restarcie
 @bot.event
 async def setup_hook():
     bot.add_view(VerifyView())
 
-import os
-
-TOKEN = os.getenv("DISCORD_TOKEN")  # <-- tak musi być
-
+bot.run(TOKEN)
