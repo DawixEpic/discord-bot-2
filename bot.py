@@ -58,4 +58,11 @@ async def on_ready():
 async def setup_hook():
     bot.add_view(VerifyView())
 
-bot.run(TOKEN)
+import os
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    print('Token jest pusty! Sprawdź ustawienia zmiennych środowiskowych.')
+else:
+    bot.run(TOKEN)
+
