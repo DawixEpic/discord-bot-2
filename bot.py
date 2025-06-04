@@ -53,4 +53,7 @@ async def on_ready():
 async def setup_hook():
     bot.add_view(VerifyView())
 
-bot.run(TOKEN)
+import os
+
+TOKEN = os.getenv("DISCORD_TOKEN")  # <-- tak musi być
+
