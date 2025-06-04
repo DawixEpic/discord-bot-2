@@ -3,18 +3,14 @@ from discord.ext import commands
 import os
 
 intents = discord.Intents.default()
-intents.members = True  # potrzebne do nadania roli
-intents.message_content = True  # potrzebne do purge
+intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🔧 Ustaw swoje ID roli
-ROLE_ID = 1373275307150278686  # <--- zamień na ID roli do weryfikacji
+ROLE_ID = 1373275307150278686  # ZMIEŃ NA PRAWDZIWE ID ROLI
+CHANNEL_ID = 1373258480382771270  # ZMIEŃ NA ID KANAŁU WERYFIKACJI
 
-# Kanał, na który automatycznie wysyłamy embed z przyciskiem
-CHANNEL_ID = 1373258480382771270
-
-# Klasa przycisku
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -36,7 +32,10 @@ class VerifyView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f"❌ Błąd przy nadawaniu roli: {e}", ephemeral=True)
 
-# Wysyłanie wiadomości z przyciskiem po starcie bota
+@bot.event
+async def setup_hook():
+    await bot.tree.sync()
+
 @bot.event
 async def on_ready():
     print(f"✅ Zalogowano jako {bot.user} ({bot.user.id})")
@@ -71,7 +70,6 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Błąd przy wysyłaniu wiadomości: {e}")
 
-# Komenda /verifybutton – alternatywnie do ręcznego wysłania wiadomości
 @bot.tree.command(name="verifybutton", description="Wyślij embed weryfikacyjny z przyciskiem")
 async def verifybutton(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -82,11 +80,7 @@ async def verifybutton(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=VerifyView())
     await interaction.response.send_message("✅ Wysłano wiadomość z przyciskiem.", ephemeral=True)
 
-# Start bota
-@bot.event
-async def setup_hook():
-    await bot.tree.sync()
-
+# Uruchomienie bota
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if not TOKEN:
     print("❌ Nie ustawiono tokena bota (zmienna środowiskowa DISCORD_BOT_TOKEN)")
