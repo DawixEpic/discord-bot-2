@@ -3,80 +3,92 @@ from discord.ext import commands
 import os
 
 intents = discord.Intents.default()
-intents.members = True  # potrzebne do nadawania roli
-intents.message_content = True  # do czytania treści wiadomości (do purge)
+intents.members = True  # potrzebne do nadania roli
+intents.message_content = True  # potrzebne do purge
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-ROLE_ID = 1373275307150278686  # <-- podmień na ID roli "Zweryfikowany"
-CHANNEL_ID = 1373258480382771270  # kanał, gdzie wysyłamy embed z przyciskiem
+# 🔧 Ustaw swoje ID roli
+ROLE_ID = 1373275307150278686  # <--- zamień na ID roli do weryfikacji
 
+# Kanał, na który automatycznie wysyłamy embed z przyciskiem
+CHANNEL_ID = 1373258480382771270
+
+# Klasa przycisku
 class VerifyView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # brak timeoutu
+        super().__init__(timeout=None)
 
-    @discord.ui.button(label="Weryfikuj", style=discord.ButtonStyle.green, custom_id="verify_button")
+    @discord.ui.button(label="✅ Weryfikuj", style=discord.ButtonStyle.green, custom_id="verify_button")
     async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = interaction.guild.get_role(ROLE_ID)
-        if role is None:
-            await interaction.response.send_message("Nie mogę znaleźć roli do weryfikacji.", ephemeral=True)
+        if not role:
+            await interaction.response.send_message("❌ Rola do weryfikacji nie została znaleziona.", ephemeral=True)
             return
+
         if role in interaction.user.roles:
-            await interaction.response.send_message("Już jesteś zweryfikowany!", ephemeral=True)
+            await interaction.response.send_message("✅ Już jesteś zweryfikowany!", ephemeral=True)
             return
+
         try:
             await interaction.user.add_roles(role, reason="Weryfikacja przez przycisk")
-            await interaction.response.send_message("Pomyślnie zweryfikowano!", ephemeral=True)
+            await interaction.response.send_message("✅ Zweryfikowano pomyślnie!", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"Błąd przy nadawaniu roli: {e}", ephemeral=True)
+            await interaction.response.send_message(f"❌ Błąd przy nadawaniu roli: {e}", ephemeral=True)
 
+# Wysyłanie wiadomości z przyciskiem po starcie bota
 @bot.event
 async def on_ready():
-    print(f'Zalogowano jako {bot.user}!')
+    print(f"✅ Zalogowano jako {bot.user} ({bot.user.id})")
 
     try:
         channel = await bot.fetch_channel(CHANNEL_ID)
+        print(f"📡 Znaleziono kanał: {channel.name} ({channel.id})")
     except Exception as e:
-        print(f"Nie udało się pobrać kanału: {e}")
+        print(f"❌ Nie można pobrać kanału: {e}")
         return
 
     perms = channel.permissions_for(channel.guild.me)
     if not (perms.read_messages and perms.send_messages and perms.manage_messages):
-        print("Bot nie ma wymaganych uprawnień na kanale!")
+        print("❌ Bot nie ma wymaganych uprawnień na tym kanale!")
         return
 
     try:
         deleted = await channel.purge(limit=100, check=lambda m: m.author == bot.user)
-        print(f"Usunięto {len(deleted)} wiadomości bota na kanale {channel.name}")
+        print(f"🧹 Usunięto {len(deleted)} starych wiadomości bota.")
     except Exception as e:
-        print(f"Błąd usuwania wiadomości: {e}")
+        print(f"❌ Błąd przy usuwaniu wiadomości: {e}")
 
     embed = discord.Embed(
-        title="Weryfikacja",
-        description="Kliknij przycisk, aby się zweryfikować i uzyskać dostęp do serwera.",
-        color=discord.Color.blue()
+        title="🔒 Weryfikacja",
+        description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.",
+        color=discord.Color.green()
     )
-    view = VerifyView()
-    try:
-        await channel.send(embed=embed, view=view)
-        print(f"Wysłano wiadomość z przyciskiem na kanał {channel.name}")
-    except Exception as e:
-        print(f"Błąd przy wysyłaniu wiadomości: {e}")
 
-@bot.tree.command(name="verifybutton", description="Wyślij embed z przyciskiem weryfikacji w tym kanale")
+    try:
+        await channel.send(embed=embed, view=VerifyView())
+        print("✅ Wiadomość z przyciskiem została wysłana.")
+    except Exception as e:
+        print(f"❌ Błąd przy wysyłaniu wiadomości: {e}")
+
+# Komenda /verifybutton – alternatywnie do ręcznego wysłania wiadomości
+@bot.tree.command(name="verifybutton", description="Wyślij embed weryfikacyjny z przyciskiem")
 async def verifybutton(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="Weryfikacja",
+        title="🔒 Weryfikacja",
         description="Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.",
-        color=discord.Color.blue()
+        color=discord.Color.green()
     )
-    view = VerifyView()
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("Wiadomość z przyciskiem wysłana.", ephemeral=True)
+    await interaction.channel.send(embed=embed, view=VerifyView())
+    await interaction.response.send_message("✅ Wysłano wiadomość z przyciskiem.", ephemeral=True)
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")  # na Railway ustaw zmienną środowiskową DISCORD_BOT_TOKEN
+# Start bota
+@bot.event
+async def setup_hook():
+    await bot.tree.sync()
 
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if not TOKEN:
-    print("Nie ustawiono tokena bota w zmiennych środowiskowych!")
+    print("❌ Nie ustawiono tokena bota (zmienna środowiskowa DISCORD_BOT_TOKEN)")
 else:
     bot.run(TOKEN)
