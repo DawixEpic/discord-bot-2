@@ -53,4 +53,4 @@ async def on_ready():
 async def setup_hook():
     bot.add_view(VerifyView())
 
-bot.run(DISCORD_TOKEN)
+bot.run(TOKEN)
