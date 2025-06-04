@@ -3,7 +3,11 @@ import discord
 from discord.ext import commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = 1373253103176122399  # <-- wpisz tutaj ID serwera jako int
+print(f'TOKEN: "{TOKEN}"')  # DEBUG - sprawdzenie tokena
+if not TOKEN:
+    print("Token jest pusty! Sprawdź ustawienia zmiennych środowiskowych.")
+
+GUILD_ID = 1373253103176122399  # <-- wpisz ID serwera jako int
 CHANNEL_ID = 1373258480382771270
 ROLE_ID = 1373275307150278686
 
