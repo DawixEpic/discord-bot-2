@@ -151,123 +151,106 @@ class BuySellView(discord.ui.View):
         placeholder="Wybierz opcję",
         options=[
             discord.SelectOption(label="Kup", value="buy", emoji="💰"),
-            discord.SelectOption(label="Sprzedaj", value="sell", emoji="🛒")
+            discord.SelectOption(label="Sprzedaj", value="sell", emoji="💸")
         ],
         custom_id="buy_sell_select"
     )
-    async def buy_sell_selected(self, interaction: discord.Interaction, select: discord.ui.Select):
+    async def buy_sell_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         choice = select.values[0]
         if choice == "buy":
-            await interaction.response.edit_message(content="Wybierz serwer:", view=ServerSelectView(self))
-        else:  # Sprzedaj - otwórz modal do wpisania opisu sprzedaży
+            # Wyświetlamy menu wyboru serwera
+            await interaction.response.send_message("Wybierz serwer:", view=ServerSelectView(self), ephemeral=True)
+        else:
+            # Modal do wpisania, co chcesz sprzedać
             await interaction.response.send_modal(SellModal(self))
-            # Ukryj wiadomość z wyborem bo przechodzimy do modala
-            await interaction.message.delete()
 
     async def finish(self, interaction: discord.Interaction):
-        # Po finalizacji tworzymy kanał ticketu
+        # Wywoływane po wyborze lub wpisaniu szczegółów
         guild = interaction.guild
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.get_role(ADMIN_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-        category = guild.get_channel(TICKET_CATEGORY_ID)
-        channel = await guild.create_text_channel(
+        ticket_channel = await guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
-            category=category,
+            category=guild.get_channel(TICKET_CATEGORY_ID),
             overwrites=overwrites,
             reason="Nowy ticket"
         )
-        embed = discord.Embed(title="🎫 Ticket", color=discord.Color.blue())
+        embed = discord.Embed(title="🎫 Nowy ticket", color=discord.Color.blue())
         embed.add_field(name="Użytkownik", value=interaction.user.mention, inline=False)
-        embed.add_field(name="Zamówienie", value="\n".join(self.items), inline=False)
-        await channel.send(embed=embed, view=CloseButton())
+        embed.add_field(name="Zamówienie", value=", ".join(self.items), inline=False)
+        await ticket_channel.send(embed=embed, view=CloseButton())
 
-        # Logowanie do kanału logów
+        # Log do kanału logów z przyciskiem zrealizuj
         log_channel = guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed_log = discord.Embed(title="Nowe zamówienie", color=discord.Color.gold())
-            embed_log.add_field(name="Użytkownik", value=interaction.user.mention, inline=False)
-            embed_log.add_field(name="Data", value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), inline=True)
-            embed_log.add_field(name="Zamówienie", value="\n".join(self.items), inline=False)
-            await log_channel.send(embed=embed_log, view=RealizujView(interaction.user, self.items))
+            await log_channel.send(embed=embed, view=RealizujView(interaction.user, self.items))
 
-        await interaction.followup.send("✅ Ticket został utworzony!", ephemeral=True)
+        await interaction.followup.send(f"✅ Twój ticket został utworzony: {ticket_channel.mention}", ephemeral=True)
 
 class ServerSelectView(discord.ui.View):
     def __init__(self, parent_view):
-        super().__init__(timeout=180)
+        super().__init__(timeout=60)
         self.parent_view = parent_view
+        options = [discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()]
+        self.select = discord.ui.Select(placeholder="Wybierz serwer", options=options)
+        self.select.callback = self.server_callback
+        self.add_item(self.select)
 
-    @discord.ui.select(
-        placeholder="Wybierz serwer",
-        options=[discord.SelectOption(label=server) for server in SERVER_OPTIONS.keys()],
-        custom_id="server_select"
-    )
-    async def server_selected(self, interaction: discord.Interaction, select: discord.ui.Select):
-        server_name = select.values[0]
-        self.parent_view.server_name = server_name
-        await interaction.response.edit_message(content="Wybierz tryb:", view=ModeSelectView(self.parent_view, server_name))
+    async def server_callback(self, interaction: discord.Interaction):
+        selected_server = self.select.values[0]
+        await interaction.response.edit_message(content=f"Wybierz tryb dla serwera **{selected_server}**:", view=ModeSelectView(self.parent_view, selected_server))
 
 class ModeSelectView(discord.ui.View):
-    def __init__(self, parent_view, server_name):
-        super().__init__(timeout=180)
+    def __init__(self, parent_view, server):
+        super().__init__(timeout=60)
         self.parent_view = parent_view
-        self.server_name = server_name
+        self.server = server
+        modes = SERVER_OPTIONS[server].keys()
+        options = [discord.SelectOption(label=mode) for mode in modes]
+        self.select = discord.ui.Select(placeholder="Wybierz tryb", options=options)
+        self.select.callback = self.mode_callback
+        self.add_item(self.select)
 
-    @discord.ui.select(
-        placeholder="Wybierz tryb",
-        options=[discord.SelectOption(label=mode) for mode in SERVER_OPTIONS.get(self.server_name, {})],
-        custom_id="mode_select"
-    )
-    async def mode_selected(self, interaction: discord.Interaction, select: discord.ui.Select):
-        mode_name = select.values[0]
-        self.parent_view.mode_name = mode_name
-        await interaction.response.edit_message(content="Wybierz item:", view=ItemSelectView(self.parent_view, self.server_name, mode_name))
+    async def mode_callback(self, interaction: discord.Interaction):
+        selected_mode = self.select.values[0]
+        items = SERVER_OPTIONS[self.server][selected_mode]
+        options = [discord.SelectOption(label=item) for item in items]
+        await interaction.response.edit_message(content=f"Wybierz przedmiot / opcję dla trybu **{selected_mode}**:", view=ItemSelectView(self.parent_view, self.server, selected_mode, options))
 
 class ItemSelectView(discord.ui.View):
-    def __init__(self, parent_view, server_name, mode_name):
+    def __init__(self, parent_view, server, mode, options):
         super().__init__(timeout=180)
         self.parent_view = parent_view
-        self.server_name = server_name
-        self.mode_name = mode_name
+        self.server = server
+        self.mode = mode
+        self.items = []
+        self.select = discord.ui.Select(placeholder="Wybierz przedmiot (możesz wybrać kilka)", options=options, max_values=len(options))
+        self.select.callback = self.item_callback
+        self.add_item(self.select)
 
-    @discord.ui.select(
-        placeholder="Wybierz item",
-        options=[discord.SelectOption(label=item) for item in SERVER_OPTIONS.get(self.server_name, {}).get(self.mode_name, [])],
-        custom_id="item_select"
-    )
-    async def item_selected(self, interaction: discord.Interaction, select: discord.ui.Select):
-        item = select.values[0]
-        if item == "💰 Kasa":
-            # Otwórz modal wpisania kwoty
+    async def item_callback(self, interaction: discord.Interaction):
+        self.items = self.select.values
+
+        if "💰 Kasa" in self.items:
+            # Usuń "💰 Kasa" z listy, modal będzie pytał o kwotę
+            self.items.remove("💰 Kasa")
+            self.parent_view.items = self.items.copy()
             await interaction.response.send_modal(AmountModal(self.parent_view))
-            # Ukryj wiadomość z wyborem itemu, bo czekamy na modal
-            await interaction.message.delete()
         else:
-            self.parent_view.items.append(item)
+            self.parent_view.items = self.items
             await self.parent_view.finish(interaction)
 
-# --- KOMENDA /verify ---
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def setupverify(ctx):
-    if ctx.channel.id != VERIFY_CHANNEL_ID:
-        await ctx.send(f"Ta komenda działa tylko na kanale <#{VERIFY_CHANNEL_ID}>")
-        return
-    embed = discord.Embed(title="Weryfikacja", description="Kliknij przycisk, aby się zweryfikować.", color=discord.Color.green())
+# --- KOMENDA START ---
+@bot.event
+async def on_ready():
+    print(f"Bot zalogowany jako {bot.user}!")
+    guild = bot.get_guild(GUILD_ID)
+    channel = guild.get_channel(VERIFY_CHANNEL_ID)
+    await channel.purge(limit=10)
     view = WeryfikacjaButton()
-    await ctx.send(embed=embed, view=view)
+    await channel.send("Kliknij przycisk, aby się zweryfikować!", view=view)
 
-# --- KOMENDA /ticket ---
-@bot.command()
-async def ticket(ctx):
-    if ctx.channel.id != TICKET_CHANNEL_ID:
-        await ctx.send(f"Proszę używać tej komendy na kanale <#{TICKET_CHANNEL_ID}>")
-        return
-    view = BuySellView()
-    embed = discord.Embed(title="Tworzenie ticketu", description="Wybierz, czy chcesz kupić czy sprzedać.", color=discord.Color.blue())
-    await ctx.send(embed=embed, view=view)
-
+# --- URUCHOMIENIE BOTA ---
 bot.run("TWÓJ_TOKEN_TUTAJ")
