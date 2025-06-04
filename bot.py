@@ -1,57 +1,56 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+import discord
+from discord.ext import commands
+import asyncio
+import os
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-});
+TOKEN = 'TWÓJ_TOKEN_BOTA'
+CHANNEL_ID = 1373258480382771270
+ROLE_ID = 1373275307150278686
 
-const CHANNEL_ID = '1373258480382771270';
-const ROLE_ID = '1373275307150278686';
-const BUTTON_ID = 'verify_button';
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-client.once('ready', async () => {
-  console.log(`Zalogowano jako ${client.user.tag}`);
 
-  const channel = await client.channels.fetch(CHANNEL_ID);
-  if (!channel.isTextBased()) return;
+class VerifyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-  // Usuwanie wszystkich wiadomości
-  const messages = await channel.messages.fetch({ limit: 100 });
-  await Promise.all(messages.map(msg => msg.delete()));
+    @discord.ui.button(label="✅ Zweryfikuj się", style=discord.ButtonStyle.success, custom_id="verify_button")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        role = interaction.guild.get_role(ROLE_ID)
+        if role in interaction.user.roles:
+            await interaction.response.send_message("Masz już tę rolę!", ephemeral=True)
+        else:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message("✅ Została Ci nadana rola!", ephemeral=True)
 
-  // Tworzenie wiadomości z przyciskiem
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BUTTON_ID)
-      .setLabel('✅ Zweryfikuj się')
-      .setStyle(ButtonStyle.Success)
-  );
 
-  await channel.send({
-    content: '**Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.**',
-    components: [row]
-  });
-});
+@bot.event
+async def on_ready():
+    print(f"Zalogowano jako {bot.user}!")
 
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId !== BUTTON_ID) return;
+    channel = bot.get_channel(CHANNEL_ID)
 
-  const role = interaction.guild.roles.cache.get(ROLE_ID);
-  const member = interaction.member;
+    # Usuwanie starych wiadomości
+    try:
+        messages = await channel.history(limit=100).flatten()
+        for msg in messages:
+            await msg.delete()
+    except Exception as e:
+        print("Błąd przy usuwaniu wiadomości:", e)
 
-  if (member.roles.cache.has(ROLE_ID)) {
-    await interaction.reply({ content: 'Masz już tę rolę.', ephemeral: true });
-  } else {
-    await member.roles.add(role);
-    await interaction.reply({ content: '✅ Pomyślnie zweryfikowano i nadano rolę!', ephemeral: true });
-  }
-});
+    # Wysyłanie nowej wiadomości z przyciskiem
+    view = VerifyView()
+    await channel.send(
+        "**Kliknij przycisk poniżej, aby się zweryfikować i uzyskać dostęp do serwera.**",
+        view=view
+    )
 
-client.login(process.env.DISCORD_TOKEN);
+# Zarejestruj View przy starcie bota, żeby przycisk działał po restarcie
+@bot.event
+async def setup_hook():
+    bot.add_view(VerifyView())
+
+bot.run(DISCORD_TOKEN)
